@@ -30,6 +30,7 @@
     { fill: '#FF6D1F', stroke: '#C24E0E', text: '#FFFFFF' }, // 10 naranja
   ];
   const CUSTOM_STYLE = { fill: '#E91E63', stroke: '#A3124A', text: '#FFFFFF' };
+  const HOLLOW_STROKE = '#1F1F1F'; // contorno de las regletas sin relleno
 
   // Regletas de María Antonia Canals (índice 10 = regleta especial)
   const CANALS_FILLS = ['#E8CFA0', '#F4A3BE', '#3E9BDB', '#E0352B', '#3FA34D', '#A980CF', '#FFD633', '#8A4B2E', '#1F3A8F', '#4A2E22', '#E91E63'];
@@ -585,7 +586,9 @@
     const st = styleOf(r);
     const { w, h } = dims(r);
     const filled = r.filled !== false;
-    const ink = filled ? st.text : st.stroke;
+    // Sin relleno: contorno negro punteado, sin el color de la regleta (representa "lo que falta")
+    const outline = filled ? st.stroke : HOLLOW_STROKE;
+    const ink = filled ? st.text : HOLLOW_STROKE;
     const selected = selection.has(r.id);
     const cls = ['rod'];
     if (r.custom) cls.push('custom');
@@ -595,13 +598,13 @@
     if (selected) cls.push('selected');
 
     let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">`;
-    s += `<rect class="rod-body" width="${w}" height="${h}" rx="0.03" fill="${filled ? st.fill : 'none'}" stroke="${st.stroke}"/>`;
+    s += `<rect class="rod-body" width="${w}" height="${h}" rx="0.03" fill="${filled ? st.fill : 'none'}" stroke="${outline}"/>`;
 
     if (prefs.unitLines && r.len > 1) {
       let d = '';
       if (r.plate) for (let i = 1; i < 10; i++) d += `M${i} 0V10M0 ${i}H10`;
       else for (let i = 1; i < r.len - 1e-6; i++) d += r.vertical ? `M0 ${i}H1` : `M${i} 0V1`;
-      s += `<path class="unit-lines" d="${d}" stroke="${st.stroke}"/>`;
+      s += `<path class="unit-lines" d="${d}" stroke="${filled ? st.stroke : '#8A8A8A'}"/>`;
     }
 
     const hasHandle = r.custom && !r.locked;
@@ -625,7 +628,8 @@
   }
 
   function labelMarkup(r, w, h, color, hasHandle) {
-    const lab = labelFor(r.len, r.custom);
+    // Una regleta sin relleno no desvela su valor: muestra "?" si las etiquetas están activadas
+    const lab = r.filled === false ? (prefs.labelMode === 'basic' ? null : { text: '?' }) : labelFor(r.len, r.custom);
     if (!lab) return '';
     let cx = w / 2, cy = h / 2;
     // Deja sitio al asidero de la regleta personalizable

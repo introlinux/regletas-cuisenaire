@@ -197,7 +197,7 @@ body.drawing.tool-eraser #board { cursor: none; }
 .rod { cursor: grab; }
 .rod.locked { cursor: default; }
 .rod-body { vector-effect: non-scaling-stroke; stroke-width: var(--rod-stroke-w); pointer-events: all; }
-.rod.hollow .rod-body { stroke-width: calc(var(--rod-stroke-w) + 1.5px); }
+.rod.hollow .rod-body { stroke-width: calc(var(--rod-stroke-w) + 0.5px); stroke-dasharray: 7 5; }
 body.hc .rod:not(.hollow) .rod-body { stroke: #000; }
 .unit-lines { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1px; opacity: .5; stroke-dasharray: 3 2; pointer-events: none; }
 body.hc .unit-lines { stroke: #000; stroke-width: 1.5px; opacity: .8; }
