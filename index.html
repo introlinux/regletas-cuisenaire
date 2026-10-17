@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Regletas de Cuisenaire</title>
+  <meta name="description" content="Regletas de Cuisenaire virtuales para manipular, comparar y dibujar. Funciona sin conexión.">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Regletas">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-labels="basic">
+
+  <!-- Iconos (dibujados a mano, sin dependencias) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M5.5 8h1.5M5.5 11h1.5M5.5 14h1.5"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-orient-h" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M8 9v6M14 9v6"/></symbol>
+    <symbol id="i-orient-v" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="20" rx="1"/><path d="M9 8h6M9 14h6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
+    <symbol id="i-units" viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="1"/><path d="M7 8v8M12 8v8M17 8v8"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+    <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></symbol>
+    <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><rect x="7" y="9" width="10" height="6" rx="1"/></symbol>
+    <symbol id="i-fullscreen" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+    <symbol id="i-fullscreen-exit" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
+    <symbol id="i-highlighter" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7M5 11l9 9"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/></symbol>
+    <symbol id="i-box-check" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+    <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M4 3l7 17 2.5-7.5L21 10z"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4.5 4H15a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2"/><circle cx="12" cy="7" r="1.2"/><circle cx="16.5" cy="10.5" r="1.2"/></symbol>
+    <symbol id="i-angle" viewBox="0 0 24 24"><path d="M3 20h18M3 20 16 5"/><path d="M10 20a7 7 0 0 0-2.1-5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-unlink" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/><path d="M3 3l18 18"/></symbol>
+    <symbol id="i-resize" viewBox="0 0 24 24"><path d="M2 12 8 6v12zM22 12l-6-6v12z" fill="currentColor" stroke="none"/></symbol>
+  </svg>
+
+  <div class="app">
+
+    <main class="main">
+      <!-- Paleta de regletas -->
+      <aside class="palette" id="palette">
+        <div class="pal-hint" data-i18n="paletteHint">Arrastra o pulsa para añadir</div>
+        <div class="pal-list" id="paletteList"></div>
+      </aside>
+
+      <!-- Lienzo -->
+      <div class="board-wrap" id="boardWrap">
+        <svg id="board" xmlns="http://www.w3.org/2000/svg">
+          <path id="gridPath"/>
+          <g id="world">
+            <g id="rodsLayer"></g>
+            <g id="selLayer"></g>
+            <g id="inkLayer"></g>
+            <g id="uiLayer"><rect id="marquee" display="none"/><circle id="eraserCursor" r="0.25" display="none"/></g>
+          </g>
+        </svg>
+        <div class="empty-hint" id="emptyHint" data-i18n="emptyHint"></div>
+        <div class="angle-badge" id="angleBadge" hidden>0°</div>
+
+        <!-- Barra de dibujo -->
+        <div class="drawbar" id="drawbar" hidden>
+          <button type="button" class="db-btn" id="drawExit"><svg class="ico"><use href="#i-x"/></svg><span data-i18n="exit">Salir</span></button>
+          <button type="button" class="db-btn" id="drawClear"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="clearInk">Borrar todo</span></button>
+          <span class="db-sep"></span>
+          <div class="db-group" id="drawTools">
+            <button type="button" class="db-tool" data-tool="pen" data-i18n-title="pen"><svg class="ico"><use href="#i-pen"/></svg></button>
+            <button type="button" class="db-tool" data-tool="highlighter" data-i18n-title="highlighter"><svg class="ico"><use href="#i-highlighter"/></svg></button>
+            <button type="button" class="db-tool" data-tool="eraser" data-i18n-title="eraser"><svg class="ico"><use href="#i-eraser"/></svg></button>
+          </div>
+          <span class="db-sep"></span>
+          <div class="db-group" id="drawSizes"></div>
+          <span class="db-sep"></span>
+          <div class="db-group db-colors" id="drawColors"></div>
+        </div>
+
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+      </div>
+    </main>
+
+    <!-- Barra inferior (al alcance de los niños en pizarras digitales) -->
+    <footer class="toolbar" role="toolbar">
+      <div class="tb-group">
+        <button type="button" class="tb-btn icon" id="btnPalette" aria-pressed="true" data-i18n-title="togglePalette"><svg class="ico"><use href="#i-sidebar"/></svg></button>
+        <button type="button" class="tb-btn" id="btnLabels" aria-haspopup="true" aria-expanded="false" data-i18n-title="labels">
+          <svg class="ico"><use href="#i-tag"/></svg><span id="labelsText">Básico</span><svg class="ico small"><use href="#i-chevron-down"/></svg>
+        </button>
+        <button type="button" class="tb-btn" id="btnReset" data-i18n-title="reset"><svg class="ico"><use href="#i-reset"/></svg><span class="btn-text" data-i18n="reset">Restaurar</span></button>
+      </div>
+      <span class="tb-sep"></span>
+      <div class="tb-group segmented" role="group">
+        <button type="button" class="tb-btn" id="btnModeSelect" aria-pressed="true" data-i18n-title="selectModeTitle"><svg class="ico"><use href="#i-pointer"/></svg><span class="btn-text" data-i18n="selectMode">Seleccionar</span></button>
+        <button type="button" class="tb-btn" id="btnModePan" aria-pressed="false" data-i18n-title="panModeTitle"><svg class="ico"><use href="#i-hand"/></svg><span class="btn-text" data-i18n="panMode">Mover lienzo</span></button>
+      </div>
+      <span class="tb-sep"></span>
+      <div class="tb-group">
+        <button type="button" class="tb-btn" id="btnOrient" data-i18n-title="orientation"><svg class="ico"><use id="orientIcon" href="#i-orient-h"/></svg><span class="btn-text sec" id="orientText">Horizontal</span></button>
+        <button type="button" class="tb-btn" id="btnGrid" aria-pressed="true" data-i18n-title="grid"><svg class="ico"><use href="#i-grid"/></svg><span class="btn-text sec" data-i18n="grid">Cuadrícula</span></button>
+        <button type="button" class="tb-btn" id="btnUnits" aria-pressed="false" data-i18n-title="unitLines"><svg class="ico"><use href="#i-units"/></svg><span class="btn-text sec" data-i18n="unitLines">Líneas unitarias</span></button>
+        <button type="button" class="tb-btn" id="btnRotate" aria-pressed="false" data-i18n-title="freeRotateTitle"><svg class="ico"><use href="#i-angle"/></svg><span class="btn-text sec" data-i18n="freeRotate">Giro libre</span></button>
+      </div>
+      <span class="tb-spacer"></span>
+      <div class="tb-group">
+        <button type="button" class="tb-btn icon" id="btnUndo" data-i18n-title="undo" disabled><svg class="ico"><use href="#i-undo"/></svg></button>
+        <button type="button" class="tb-btn icon" id="btnRedo" data-i18n-title="redo" disabled><svg class="ico"><use href="#i-redo"/></svg></button>
+      </div>
+      <span class="tb-sep"></span>
+      <div class="tb-group">
+        <button type="button" class="tb-btn icon" id="btnZoomOut" data-i18n-title="zoomOut"><svg class="ico"><use href="#i-zoom-out"/></svg></button>
+        <button type="button" class="tb-btn zoom-label" id="btnZoomReset" data-i18n-title="zoomReset"><span id="zoomLabel">100%</span></button>
+        <button type="button" class="tb-btn icon" id="btnZoomIn" data-i18n-title="zoomIn"><svg class="ico"><use href="#i-zoom-in"/></svg></button>
+        <button type="button" class="tb-btn icon" id="btnFit" data-i18n-title="fit"><svg class="ico"><use href="#i-fit"/></svg></button>
+        <button type="button" class="tb-btn icon" id="btnFullscreen" data-i18n-title="fullscreen"><svg class="ico"><use id="fsIcon" href="#i-fullscreen"/></svg></button>
+      </div>
+      <span class="tb-sep"></span>
+      <div class="tb-group">
+        <button type="button" class="tb-btn" id="btnDraw" aria-pressed="false" data-i18n-title="draw"><svg class="ico"><use href="#i-pen"/></svg><span class="btn-text" data-i18n="draw">Dibujar</span></button>
+        <button type="button" class="tb-btn icon" id="btnSettings" aria-haspopup="true" aria-expanded="false" data-i18n-title="settings"><svg class="ico"><use href="#i-settings"/></svg></button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Menú de etiquetas -->
+  <div class="popover" id="labelsMenu" hidden>
+    <button type="button" class="menu-item" data-mode="basic"><span data-i18n="modeBasic">Básico</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-mode="integers"><span data-i18n="modeIntegers">Números enteros</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-mode="decimals"><span data-i18n="modeDecimals">Decimales</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-mode="letters"><span data-i18n="modeLetters">Letras</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-mode="fractions"><span data-i18n="modeFractions">Fracciones</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <div class="ref-row" id="refRow">
+      <div class="menu-title" data-i18n="refUnit">Regleta que vale 1</div>
+      <div class="ref-chips" id="refChips"></div>
+    </div>
+  </div>
+
+  <!-- Menú de ajustes -->
+  <div class="popover" id="settingsMenu" hidden>
+    <label class="switch-row"><span data-i18n="highContrast">Alto contraste</span><input type="checkbox" id="optContrast"><span class="switch" aria-hidden="true"></span></label>
+    <label class="switch-row"><span data-i18n="snap">Ajuste magnético</span><input type="checkbox" id="optSnap"><span class="switch" aria-hidden="true"></span></label>
+    <div class="menu-sep"></div>
+    <div class="menu-title" data-i18n="language">Idioma</div>
+    <button type="button" class="menu-item" data-lang="es"><span>Español</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-lang="en"><span>English</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <button type="button" class="menu-item" data-lang="fr"><span>Français</span><svg class="ico check"><use href="#i-check"/></svg></button>
+    <div class="menu-sep"></div>
+    <button type="button" class="menu-item" id="btnColors"><span data-i18n="rodColors">Colores de las regletas</span><svg class="ico"><use href="#i-palette"/></svg></button>
+    <div id="installWrap" hidden>
+      <div class="menu-sep"></div>
+      <button type="button" class="menu-item" id="btnInstall"><span data-i18n="install">Instalar aplicación</span><svg class="ico"><use href="#i-download"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Colores de las regletas -->
+  <div class="modal-backdrop" id="colorsDialog" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="colorsTitle">
+      <div class="modal-head">
+        <h2 id="colorsTitle" data-i18n="rodColors">Colores de las regletas</h2>
+        <button type="button" class="icon-btn" id="colorsClose" data-i18n-title="close"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="menu-title" data-i18n="colorSet">Juego de colores</div>
+      <div class="preset-row">
+        <button type="button" class="preset-btn" data-set="cuisenaire"><span class="preset-swatches" data-swatches="cuisenaire"></span>Cuisenaire</button>
+        <button type="button" class="preset-btn" data-set="canals"><span class="preset-swatches" data-swatches="canals"></span>M. A. Canals</button>
+      </div>
+      <div class="menu-title" data-i18n="customizeColors">Personalizar cada regleta</div>
+      <p class="modal-hint" data-i18n="colorsHint"></p>
+      <div class="color-grid" id="colorGrid"></div>
+      <div class="modal-foot">
+        <button type="button" class="db-btn" id="colorsRestore"><svg class="ico"><use href="#i-reset"/></svg><span data-i18n="restoreColors">Restaurar colores del juego</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menú contextual de regleta -->
+  <div class="popover rod-menu" id="rodMenu" hidden>
+    <button type="button" class="menu-item start" data-act="fill"><svg class="ico"><use id="fillIcon" href="#i-box-check"/></svg><span data-i18n="fill">Activar/Desactivar relleno</span></button>
+    <button type="button" class="menu-item start" data-act="rotate"><svg class="ico"><use href="#i-rotate"/></svg><span data-i18n="rotate">Girar</span></button>
+    <button type="button" class="menu-item start" data-act="group" hidden><svg class="ico"><use id="groupIcon" href="#i-link"/></svg><span id="groupText">Unir</span></button>
+    <div class="menu-sep"></div>
+    <div class="rod-menu-icons">
+      <button type="button" class="icon-btn ok" data-act="duplicate" data-i18n-title="duplicate"><svg class="ico"><use href="#i-copy"/></svg></button>
+      <button type="button" class="icon-btn" data-act="lock" data-i18n-title="lock"><svg class="ico"><use id="lockIcon" href="#i-lock"/></svg></button>
+      <button type="button" class="icon-btn danger" data-act="delete" data-i18n-title="delete"><svg class="ico"><use href="#i-trash"/></svg></button>
+    </div>
+  </div>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
