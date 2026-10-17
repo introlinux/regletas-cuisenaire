@@ -4,6 +4,8 @@ Aplicación web progresiva (PWA) para manipular **regletas de Cuisenaire** en el
 
 Pensada para que los niños la usen con el dedo: todos los controles están en una barra inferior a su alcance y no hace falta el clic derecho del ratón para nada.
 
+**▶ Usarla ahora:** <https://introlinux.github.io/regletas-cuisenaire/>
+
 ---
 
 ## Índice
