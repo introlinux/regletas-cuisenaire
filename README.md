@@ -75,6 +75,7 @@ Se abre **tocando una regleta que ya está seleccionada**, con clic derecho o co
 
 - **Activar/Desactivar relleno** (regleta sólida o solo contorno).
 - **Numerar cuadritos / Quitar numeración**: escribe 1, 2, 3… en cada cuadrito unitario (en la placa de 100, del 1 al 100 por filas, como una tabla del 100). Útil para poner regletas encima y ver de un vistazo hasta dónde hay que llegar.
+  Con varias regletas seleccionadas se numeran **como un único bloque**: cada una continúa donde acaba la anterior (por filas, de izquierda a derecha; por columnas si todas están en vertical). Por ejemplo, una regleta de 10 con una de 3 al lado queda numerada del 1 al 13.
 - **Girar** 90°.
 - **Unir / Separar** (con dos o más regletas).
 - **Duplicar**.

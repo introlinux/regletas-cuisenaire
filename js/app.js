@@ -661,16 +661,18 @@
       const upright = r.angle ? ` transform="rotate(${-r.angle} ${x} ${y})"` : '';
       s += `<text x="${x}" y="${y}" dominant-baseline="central"${upright}>${n}</text>`;
     };
-    let fs = 0.36;
+    const k0 = r.numStart || 0; // al numerar varias como un bloque, continúa donde acaba la anterior
+    let fs;
     if (r.plate) {
-      for (let i = 0; i < 100; i++) add(i + 1, (i % 10) + 0.5, Math.floor(i / 10) + 0.5);
+      fs = k0 + 100 >= 1000 ? 0.28 : 0.36;
+      for (let i = 0; i < 100; i++) add(k0 + i + 1, (i % 10) + 0.5, Math.floor(i / 10) + 0.5);
     } else {
       const n = Math.floor(r.len + 1e-6);
-      fs = n >= 100 ? 0.3 : 0.4;
+      fs = k0 + n >= 1000 ? 0.24 : k0 + n >= 100 ? 0.3 : 0.4;
       for (let i = 0; i < n; i++) {
         // Bajo el asidero de la regleta personalizable el número se aparta hacia el inicio del cuadrito
         const u = hasHandle && i + 1 > r.len - 0.65 ? i + 0.25 : i + 0.5;
-        if (r.vertical) add(i + 1, 0.5, u); else add(i + 1, u, 0.5);
+        if (r.vertical) add(k0 + i + 1, 0.5, u); else add(k0 + i + 1, u, 0.5);
       }
     }
     return `<g class="rod-label rod-numbers" fill="${color}" font-size="${fs}">${s}</g>`;
@@ -883,6 +885,28 @@
     return copies;
   }
 
+  // Numera la selección como un único bloque: cada regleta continúa donde acaba la anterior.
+  // Orden de lectura en el marco de la regleta más antigua: por filas, o por columnas si todas son verticales.
+  function numberAsBlock(list) {
+    const { ang } = blockFrame(list);
+    const a = ang * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    const pos = new Map(list.map((r) => {
+      const cs = rodCorners(r).map((p) => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c }));
+      return [r, { u: Math.min(...cs.map((p) => p.u)), v: Math.min(...cs.map((p) => p.v)) }];
+    }));
+    const [major, minor] = list.every((r) => r.vertical && !r.plate) ? ['u', 'v'] : ['v', 'u'];
+    const sorted = list.slice().sort((A, B) => {
+      const p = pos.get(A), q = pos.get(B);
+      return Math.abs(p[major] - q[major]) > 0.5 ? p[major] - q[major] : p[minor] - q[minor];
+    });
+    let k = 0;
+    for (const r of sorted) {
+      r.numbered = true;
+      if (k) r.numStart = k; else delete r.numStart;
+      k += r.plate ? 100 : Math.floor(r.len + 1e-6);
+    }
+  }
+
   function deleteRods(list) {
     const set = new Set(list);
     rods = rods.filter((r) => !set.has(r));
@@ -962,8 +986,8 @@
         break;
       }
       case 'number': {
-        const allNumbered = list.every((r) => r.numbered);
-        list.forEach((r) => { if (allNumbered) delete r.numbered; else r.numbered = true; });
+        if (list.every((r) => r.numbered)) list.forEach((r) => { delete r.numbered; delete r.numStart; });
+        else numberAsBlock(list);
         break;
       }
       case 'rotate':
