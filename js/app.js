@@ -30,6 +30,7 @@
     { fill: '#FF6D1F', stroke: '#C24E0E', text: '#FFFFFF' }, // 10 naranja
   ];
   const CUSTOM_STYLE = { fill: '#E91E63', stroke: '#A3124A', text: '#FFFFFF' };
+  const PLATE_FILL = '#E6C29A';    // placa de 100: canela clarito
   const HOLLOW_STROKE = '#1F1F1F'; // contorno de las regletas sin relleno
 
   // Regletas de María Antonia Canals (índice 10 = regleta especial)
@@ -83,6 +84,7 @@
     vertical: false,
     contrast: false,
     snap: true,
+    numberFromBottom: false, // la numeración de los cuadritos empieza abajo (tabla del 100 con el 1 abajo)
     paletteOpen: true,
     tool: 'pen',
     inkColor: INK_COLORS[0],
@@ -147,7 +149,7 @@
   function applyScene(sc) {
     rods = (sc.rods || []).map((r) => Object.assign({}, r));
     strokes = (sc.strokes || []).map((s) => Object.assign({}, s, { points: s.points.map((p) => p.slice()) }));
-    nextId = Math.max(0, ...rods.map((r) => Math.max(r.id, r.group || 0)), ...strokes.map((s) => s.id)) + 1;
+    nextId = Math.max(0, ...rods.map((r) => Math.max(r.id, r.group || 0, r.numBlock || 0)), ...strokes.map((s) => s.id)) + 1;
   }
 
   function load() {
@@ -565,7 +567,7 @@
     return { fill: fill.toUpperCase(), stroke: mixHex(fill, '#000000', 0.35), text: lum > 0.4 ? mixHex(fill, '#000000', 0.72) : '#FFFFFF' };
   }
   function baseFill(i) {
-    if (i === 11) return styles[9].fill; // la placa de 100 sigue a la regleta 10 salvo que se personalice
+    if (i === 11) return PLATE_FILL;
     if (prefs.colorSet === 'canals') return CANALS_FILLS[i];
     return i === 10 ? CUSTOM_STYLE.fill : ROD_STYLES[i].fill;
   }
@@ -578,7 +580,7 @@
       else styles.push(i === 10 ? CUSTOM_STYLE : ROD_STYLES[i]);
     }
     const plate = prefs.rodColors && prefs.rodColors[11];
-    styles.push(plate ? deriveStyle(plate) : styles[9]);
+    styles.push(deriveStyle(plate || PLATE_FILL));
   }
 
   // ---------------------------------------------------------------- Dibujo de regletas
@@ -654,7 +656,8 @@
   }
 
   // Numeración de los cuadritos (sustituye a la etiqueta): de izquierda a derecha, o de arriba abajo
-  // si es vertical; la placa de 100 se numera por filas, como una tabla del 100
+  // si es vertical; la placa de 100 se numera por filas, como una tabla del 100.
+  // Con «Numerar desde abajo», las filas de la placa y las regletas verticales se numeran de abajo arriba.
   function numbersMarkup(r, color, hasHandle) {
     let s = '';
     const add = (n, x, y) => {
@@ -665,13 +668,18 @@
     let fs;
     if (r.plate) {
       fs = k0 + 100 >= 1000 ? 0.28 : 0.36;
-      for (let i = 0; i < 100; i++) add(k0 + i + 1, (i % 10) + 0.5, Math.floor(i / 10) + 0.5);
+      for (let i = 0; i < 100; i++) {
+        const row = Math.floor(i / 10);
+        add(k0 + i + 1, (i % 10) + 0.5, (prefs.numberFromBottom ? 9 - row : row) + 0.5);
+      }
     } else {
       const n = Math.floor(r.len + 1e-6);
       fs = k0 + n >= 1000 ? 0.24 : k0 + n >= 100 ? 0.3 : 0.4;
+      const up = r.vertical && prefs.numberFromBottom;
       for (let i = 0; i < n; i++) {
+        const a = up ? r.len - i - 1 : i; // comienzo del cuadrito a lo largo de la regleta
         // Bajo el asidero de la regleta personalizable el número se aparta hacia el inicio del cuadrito
-        const u = hasHandle && i + 1 > r.len - 0.65 ? i + 0.25 : i + 0.5;
+        const u = hasHandle && a + 1 > r.len - 0.65 ? a + 0.25 : a + 0.5;
         if (r.vertical) add(k0 + i + 1, 0.5, u); else add(k0 + i + 1, u, 0.5);
       }
     }
@@ -859,6 +867,10 @@
         if (!groupMap.has(r.group)) groupMap.set(r.group, nextId++);
         c.group = groupMap.get(r.group);
       }
+      if (r.numBlock) {
+        if (!groupMap.has('n' + r.numBlock)) groupMap.set('n' + r.numBlock, nextId++);
+        c.numBlock = groupMap.get('n' + r.numBlock);
+      }
       return c;
     });
     if (list.length === 1 && list[0].angle) {
@@ -886,23 +898,29 @@
   }
 
   // Numera la selección como un único bloque: cada regleta continúa donde acaba la anterior.
-  // Orden de lectura en el marco de la regleta más antigua: por filas, o por columnas si todas son verticales.
+  // Orden de lectura en el marco de la regleta más antigua: por filas, o por columnas si todas son verticales;
+  // con «Numerar desde abajo», las filas (y cada columna) se recorren de abajo arriba.
   function numberAsBlock(list) {
+    const fromBottom = prefs.numberFromBottom;
     const { ang } = blockFrame(list);
     const a = ang * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
     const pos = new Map(list.map((r) => {
       const cs = rodCorners(r).map((p) => ({ u: p.x * c + p.y * s, v: -p.x * s + p.y * c }));
-      return [r, { u: Math.min(...cs.map((p) => p.u)), v: Math.min(...cs.map((p) => p.v)) }];
+      const v = fromBottom ? -Math.max(...cs.map((p) => p.v)) : Math.min(...cs.map((p) => p.v));
+      return [r, { u: Math.min(...cs.map((p) => p.u)), v }];
     }));
     const [major, minor] = list.every((r) => r.vertical && !r.plate) ? ['u', 'v'] : ['v', 'u'];
     const sorted = list.slice().sort((A, B) => {
       const p = pos.get(A), q = pos.get(B);
       return Math.abs(p[major] - q[major]) > 0.5 ? p[major] - q[major] : p[minor] - q[minor];
     });
+    // Se recuerda qué regletas forman el bloque para renumerarlas si cambia el sentido
+    const bid = list.length > 1 ? nextId++ : 0;
     let k = 0;
     for (const r of sorted) {
       r.numbered = true;
       if (k) r.numStart = k; else delete r.numStart;
+      if (bid) r.numBlock = bid; else delete r.numBlock;
       k += r.plate ? 100 : Math.floor(r.len + 1e-6);
     }
   }
@@ -986,7 +1004,7 @@
         break;
       }
       case 'number': {
-        if (list.every((r) => r.numbered)) list.forEach((r) => { delete r.numbered; delete r.numStart; });
+        if (list.every((r) => r.numbered)) list.forEach((r) => { delete r.numbered; delete r.numStart; delete r.numBlock; });
         else numberAsBlock(list);
         break;
       }
@@ -1789,6 +1807,7 @@
     document.body.classList.toggle('hc', prefs.contrast);
     $('#optContrast').checked = prefs.contrast;
     $('#optSnap').checked = prefs.snap;
+    $('#optNumBottom').checked = prefs.numberFromBottom;
     $$('#settingsMenu [data-lang]').forEach((b) => b.classList.toggle('active', b.dataset.lang === prefs.lang));
 
     const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -1890,6 +1909,14 @@
   // Ajustes
   $('#optContrast').addEventListener('change', (e) => setPref('contrast', e.target.checked));
   $('#optSnap').addEventListener('change', (e) => setPref('snap', e.target.checked));
+  $('#optNumBottom').addEventListener('change', (e) => {
+    setPref('numberFromBottom', e.target.checked);
+    // Los bloques ya numerados se renumeran siguiendo el nuevo sentido
+    const blocks = new Set(rods.filter((r) => r.numbered && r.numBlock).map((r) => r.numBlock));
+    blocks.forEach((b) => numberAsBlock(rods.filter((r) => r.numbered && r.numBlock === b)));
+    renderRods();
+    commit();
+  });
   settingsMenu.addEventListener('click', (e) => {
     const b = e.target.closest('[data-lang]');
     if (!b) return;
@@ -1962,12 +1989,6 @@
     const chip = e.target.parentElement.querySelector('.color-chip');
     chip.style.background = st.fill; chip.style.borderColor = st.stroke; chip.style.color = st.text;
     e.target.parentElement.classList.toggle('changed', !!prefs.rodColors[i]);
-    if (i === 9 && !prefs.rodColors[11]) {
-      const plateChip = $('#colorGrid input[data-index="11"]').parentElement.querySelector('.color-chip');
-      const ps = styles[11];
-      plateChip.style.background = ps.fill; plateChip.style.borderColor = ps.stroke; plateChip.style.color = ps.text;
-      $('#colorGrid input[data-index="11"]').value = ps.fill.toLowerCase();
-    }
   });
   $('#colorsRestore').addEventListener('click', () => {
     prefs.rodColors = {};

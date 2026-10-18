@@ -76,6 +76,7 @@ Se abre **tocando una regleta que ya está seleccionada**, con clic derecho o co
 - **Activar/Desactivar relleno** (regleta sólida o solo contorno).
 - **Numerar cuadritos / Quitar numeración**: escribe 1, 2, 3… en cada cuadrito unitario (en la placa de 100, del 1 al 100 por filas, como una tabla del 100). Útil para poner regletas encima y ver de un vistazo hasta dónde hay que llegar.
   Con varias regletas seleccionadas se numeran **como un único bloque**: cada una continúa donde acaba la anterior (por filas, de izquierda a derecha; por columnas si todas están en vertical). Por ejemplo, una regleta de 10 con una de 3 al lado queda numerada del 1 al 13.
+  En *Ajustes → Numerar desde abajo* la numeración empieza abajo a la izquierda: la placa de 100 queda con el 1 en la esquina inferior izquierda, las regletas verticales se cuentan de abajo arriba y los bloques empiezan por la fila (o la columna) de abajo. Al cambiar este ajuste, los bloques ya numerados se renumeran solos.
 - **Girar** 90°.
 - **Unir / Separar** (con dos o más regletas).
 - **Duplicar**.
@@ -101,7 +102,7 @@ Las etiquetas también se muestran en la paleta y siempre se mantienen derechas,
 En **Ajustes → Colores de las regletas**:
 
 - Dos juegos de colores listos: **Cuisenaire** y **María Antonia Canals** (madera natural, rosa, azul, rojo, verde, lila, amarillo, marrón, azul oscuro y marrón oscuro).
-- **Color de cada regleta a elección**, incluidas la especial y la placa de 100 (que, si no se cambia, sigue el color de la 10). El borde y el color del texto se calculan solos para que se lean bien.
+- **Color de cada regleta a elección**, incluidas la especial y la placa de 100 (color canela clarito por defecto). El borde y el color del texto se calculan solos para que se lean bien.
 - Botón para restaurar los colores del juego elegido.
 
 ### Giro libre para geometría
