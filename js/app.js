@@ -600,7 +600,8 @@
     let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">`;
     s += `<rect class="rod-body" width="${w}" height="${h}" rx="0.03" fill="${filled ? st.fill : 'none'}" stroke="${outline}"/>`;
 
-    if (prefs.unitLines && r.len > 1) {
+    // Una regleta numerada siempre muestra sus cuadritos
+    if ((prefs.unitLines || r.numbered) && r.len > 1) {
       let d = '';
       if (r.plate) for (let i = 1; i < 10; i++) d += `M${i} 0V10M0 ${i}H10`;
       else for (let i = 1; i < r.len - 1e-6; i++) d += r.vertical ? `M0 ${i}H1` : `M${i} 0V1`;
@@ -608,7 +609,7 @@
     }
 
     const hasHandle = r.custom && !r.locked;
-    s += labelMarkup(r, w, h, ink, hasHandle);
+    s += r.numbered ? numbersMarkup(r, ink, hasHandle && selected) : labelMarkup(r, w, h, ink, hasHandle);
 
     if (hasHandle) {
       if (r.vertical) {
@@ -650,6 +651,29 @@
     const avail = looksVertical && !r.plate ? 1 : (hasHandle ? Math.max(1, w - 0.6) : w);
     const fs = Math.min(0.5 * k, (avail * 0.88) / (lab.text.length * 0.58));
     return `<g class="rod-label" fill="${color}" font-size="${r3(fs)}"${upright}><text x="${cx}" y="${cy}" dominant-baseline="central">${lab.text}</text></g>`;
+  }
+
+  // Numeración de los cuadritos (sustituye a la etiqueta): de izquierda a derecha, o de arriba abajo
+  // si es vertical; la placa de 100 se numera por filas, como una tabla del 100
+  function numbersMarkup(r, color, hasHandle) {
+    let s = '';
+    const add = (n, x, y) => {
+      const upright = r.angle ? ` transform="rotate(${-r.angle} ${x} ${y})"` : '';
+      s += `<text x="${x}" y="${y}" dominant-baseline="central"${upright}>${n}</text>`;
+    };
+    let fs = 0.36;
+    if (r.plate) {
+      for (let i = 0; i < 100; i++) add(i + 1, (i % 10) + 0.5, Math.floor(i / 10) + 0.5);
+    } else {
+      const n = Math.floor(r.len + 1e-6);
+      fs = n >= 100 ? 0.3 : 0.4;
+      for (let i = 0; i < n; i++) {
+        // Bajo el asidero de la regleta personalizable el número se aparta hacia el inicio del cuadrito
+        const u = hasHandle && i + 1 > r.len - 0.65 ? i + 0.25 : i + 0.5;
+        if (r.vertical) add(i + 1, 0.5, u); else add(i + 1, u, 0.5);
+      }
+    }
+    return `<g class="rod-label rod-numbers" fill="${color}" font-size="${fs}">${s}</g>`;
   }
 
   // El borde de selección va en una capa por encima de todas las regletas para que las vecinas no lo tapen
@@ -882,6 +906,7 @@
     const allLocked = list.every((r) => r.locked);
     const anyLocked = list.some((r) => r.locked);
     $('#fillIcon').setAttribute('href', allFilled ? '#i-box-check' : '#i-box');
+    $('#numberText').textContent = t(list.every((r) => r.numbered) ? 'unnumber' : 'number');
     $('#lockIcon').setAttribute('href', allLocked ? '#i-unlock' : '#i-lock');
     const lockBtn = rodMenu.querySelector('[data-act="lock"]');
     lockBtn.title = t(allLocked ? 'unlock' : 'lock');
@@ -934,6 +959,11 @@
       case 'fill': {
         const allFilled = list.every((r) => r.filled !== false);
         list.forEach((r) => { r.filled = !allFilled; });
+        break;
+      }
+      case 'number': {
+        const allNumbered = list.every((r) => r.numbered);
+        list.forEach((r) => { if (allNumbered) delete r.numbered; else r.numbered = true; });
         break;
       }
       case 'rotate':
@@ -1622,6 +1652,8 @@
       rodAction('rotate');
     } else if (key === 'd') {
       rodAction('duplicate');
+    } else if (key === 'n') {
+      rodAction('number');
     } else if (e.key.startsWith('Arrow') && unlocked.length) {
       e.preventDefault();
       const step = prefs.snap && prefs.grid ? 1 : 0.1;

@@ -74,6 +74,7 @@ Pensada para que los niños la usen con el dedo: todos los controles están en u
 Se abre **tocando una regleta que ya está seleccionada**, con clic derecho o con una pulsación larga. Actúa sobre toda la selección:
 
 - **Activar/Desactivar relleno** (regleta sólida o solo contorno).
+- **Numerar cuadritos / Quitar numeración**: escribe 1, 2, 3… en cada cuadrito unitario (en la placa de 100, del 1 al 100 por filas, como una tabla del 100). Útil para poner regletas encima y ver de un vistazo hasta dónde hay que llegar.
 - **Girar** 90°.
 - **Unir / Separar** (con dos o más regletas).
 - **Duplicar**.
@@ -170,6 +171,7 @@ Para construir polígonos. Se activa con el botón **Giro libre** de la barra in
 | `Supr` / `Retroceso` | Eliminar la selección |
 | `R` | Girar 90° |
 | `D` | Duplicar |
+| `N` | Numerar cuadritos / quitar numeración |
 | `[` / `]` | Girar 3° (con *Giro libre* activado) |
 | Flechas | Mover la selección |
 | `+` / `-` | Zoom |
