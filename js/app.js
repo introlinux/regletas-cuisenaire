@@ -14,6 +14,7 @@
   const PAL_STEP = 6;              // crecimiento de cada regleta en la paleta (px)
   const PEN_WIDTHS = [0.06, 0.12, 0.22];
   const HL_WIDTHS = [0.35, 0.6, 1];
+  const SHAPE_TOOLS = ['line', 'arrow', 'rect', 'circle']; // se dibujan arrastrando (la poligonal va por toques)
   const INK_COLORS = ['#1a1a1a', '#e53935', '#1e88e5', '#43a047', '#fdd835', '#fb8c00', '#8e24aa', '#6d4c41', '#9e9e9e', '#ec407a', '#ffffff'];
 
   // Colores de las regletas 1..10 (índice = valor - 1)
@@ -67,7 +68,9 @@
 
   // ---------------------------------------------------------------- Estado
   let rods = [];      // { id, len, custom, x, y, vertical, filled, locked } · textos: { id, text, size, x, y, locked }
-  let strokes = [];   // { id, tool: 'pen'|'hl', color, width, points: [[x,y],...] }
+  // Dibujos (también en `rods`): { id, shape: 'free'|'line'|'arrow'|'poly'|'rect'|'ellipse', x, y, w, h,
+  //   pts: [[u,v],...] relativos a x, y, color, width, hl (subrayador), closed (poligonal cerrada), fill }
+  let polyDraft = null; // poligonal que se está dibujando: { rod, pts: vértices ya fijados }
   let nextId = 1;
   let selection = new Set();
   let mode = 'select'; // 'select': seleccionar y mover regletas · 'pan': mover el lienzo
@@ -147,13 +150,19 @@
   }
 
   // ---------------------------------------------------------------- Persistencia
-  function sceneObj() { return { rods, strokes }; }
+  function sceneObj() { return { rods }; }
   function snapshot() { return JSON.stringify(sceneObj()); }
 
   function applyScene(sc) {
-    rods = (sc.rods || []).map((r) => Object.assign({}, r));
-    strokes = (sc.strokes || []).map((s) => Object.assign({}, s, { points: s.points.map((p) => p.slice()) }));
-    nextId = Math.max(0, ...rods.map((r) => Math.max(r.id, r.group || 0, r.numBlock || 0)), ...strokes.map((s) => s.id)) + 1;
+    rods = (sc.rods || []).map((r) => Object.assign({}, r, r.pts ? { pts: r.pts.map((q) => q.slice()) } : null));
+    // Los trazos de versiones anteriores pasan a ser dibujos que se pueden seleccionar y mover
+    for (const st of sc.strokes || []) {
+      const r = { id: st.id, shape: 'free', color: st.color, width: st.width, locked: false, angle: 0 };
+      if (st.tool === 'hl') r.hl = true;
+      setPoints(r, st.points.map(([x, y]) => ({ x, y })));
+      rods.push(r);
+    }
+    nextId = Math.max(0, ...rods.map((r) => Math.max(r.id, r.group || 0, r.numBlock || 0))) + 1;
   }
 
   function load() {
@@ -197,6 +206,7 @@
   }
 
   function undo() {
+    finishPoly();
     if (!past.length) return;
     cancelGesture();
     future.push(current);
@@ -206,6 +216,7 @@
   }
 
   function redo() {
+    finishPoly();
     if (!future.length) return;
     cancelGesture();
     past.push(current);
@@ -219,7 +230,6 @@
     applyScene(JSON.parse(current));
     pruneSelection();
     renderRods();
-    renderInk();
   }
 
   function afterChange(reloaded) {
@@ -228,11 +238,10 @@
       closeRodMenu();
       chain = null;
       renderRods();
-      renderInk();
     }
     $('#btnUndo').disabled = !past.length;
     $('#btnRedo').disabled = !future.length;
-    emptyHint.hidden = rods.length > 0 || strokes.length > 0;
+    emptyHint.hidden = rods.length > 0;
     saveSoon();
   }
 
@@ -257,6 +266,8 @@
   function findRod(id) { return rods.find((r) => r.id === id); }
   // Los textos viven en la misma lista que las regletas: se seleccionan, mueven, unen y bloquean igual
   const isText = (r) => r.text != null;
+  const isDrawing = (r) => r.shape != null;
+  const isRod = (r) => !isText(r) && !isDrawing(r);
   // La regleta personalizable adopta el color de la regleta estándar de su misma longitud (1 a 10)
   const isStandardLen = (len) => Number.isInteger(len) && len >= 1 && len <= 10;
   function styleOf(r) {
@@ -265,6 +276,7 @@
   }
   function dims(r) {
     if (isText(r)) { const L = layoutText(r.text, r.size); return { w: L.w, h: L.h }; }
+    if (isDrawing(r)) return { w: r.w, h: r.h };
     if (r.plate) return { w: 10, h: 10 };
     return r.vertical ? { w: 1, h: r.len } : { w: r.len, h: 1 };
   }
@@ -362,7 +374,7 @@
 
   // ¿Se puede mostrar el asa de giro en la selección actual?
   function canFreeRotate(list) {
-    if (!prefs.freeRotate || mode !== 'select' || drawMode || !list.length || list.some((r) => r.locked || isText(r))) return false;
+    if (!prefs.freeRotate || mode !== 'select' || drawMode || !list.length || list.some((r) => r.locked || !isRod(r))) return false;
     return list.length === 1 || isSingleBlock(list);
   }
 
@@ -385,7 +397,7 @@
   function overlaps(x, y, w, h, ignore) {
     const e = 1e-6;
     return rods.some((o) => {
-      if (ignore && ignore.has(o)) return false;
+      if ((ignore && ignore.has(o)) || isDrawing(o)) return false; // los dibujos no ocupan sitio
       const b = aabb(o);
       return x < b.x1 - e && x + w > b.x0 + e && y < b.y1 - e && y + h > b.y0 + e;
     });
@@ -509,12 +521,6 @@
 
   function fitToScreen() {
     let { x0, y0, x1, y1 } = bounds(rods);
-    for (const s of strokes) {
-      for (const [x, y] of s.points) {
-        x0 = Math.min(x0, x); y0 = Math.min(y0, y);
-        x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-      }
-    }
     if (!isFinite(x0)) {
       view.x = UNIT; view.y = UNIT; view.zoom = 1;
     } else {
@@ -661,7 +667,7 @@
     const dot = [{ x: px, y: py }, { x: px + 0.01, y: py }, { x: px + 0.01, y: py + 0.01 }, { x: px, y: py + 0.01 }];
     for (let i = rods.length - 1; i >= 0; i--) {
       const o = rods[i];
-      if (!isText(o) && o.group === r.group && polygonsIntersect(rodCorners(o), dot)) return o;
+      if (isRod(o) && o.group === r.group && polygonsIntersect(rodCorners(o), dot)) return o;
     }
     return null;
   }
@@ -684,6 +690,7 @@
   // ---------------------------------------------------------------- Dibujo de regletas
   function rodMarkup(r) {
     if (isText(r)) return textMarkup(r);
+    if (isDrawing(r)) return drawingMarkup(r);
     const st = styleOf(r);
     const { w, h } = dims(r);
     const filled = r.filled !== false;
@@ -806,6 +813,13 @@
         `<circle class="rot-dot" cx="${kx}" cy="${ky}" r="${0.26 * k}"/>` +
         `<use href="#i-rotate" class="rot-icon" x="${kx - 0.17 * k}" y="${ky - 0.17 * k}" width="${0.34 * k}" height="${0.34 * k}"/></g>`;
     }
+    // Tiradores para cambiar una figura: extremos, vértices, esquinas o lados
+    if (selection.size === 1 && isDrawing(r) && r.shape !== 'free' && !r.locked && mode === 'select' && !drawMode) {
+      const k = 1 / view.zoom;
+      s += shapeHandles(r).map(([u, v], i) =>
+        `<circle class="shape-hit" data-h="${i}" cx="${r3(u)}" cy="${r3(v)}" r="${r3(0.45 * k)}"/>` +
+        `<circle class="shape-handle" cx="${r3(u)}" cy="${r3(v)}" r="${r3(0.15 * k)}"/>`).join('');
+    }
     return s + '</g>';
   }
 
@@ -835,8 +849,8 @@
   function renderRods() {
     // Una regleta con un texto escrito encima no muestra su propia etiqueta, para que no se monten
     labelledRods = new Set(rods.filter((r) => isText(r) && r.text.trim()).map(textHost).filter(Boolean));
-    // Los textos se dibujan siempre por encima de las regletas
-    rodsLayer.innerHTML = rods.filter((r) => !isText(r)).concat(rods.filter(isText)).map(rodMarkup).join('');
+    // Por capas: regletas, dibujos y, encima de todo, textos
+    rodsLayer.innerHTML = rods.filter(isRod).concat(rods.filter(isDrawing), rods.filter(isText)).map(rodMarkup).join('');
     renderSel();
   }
 
@@ -861,8 +875,181 @@
     return `<path class="ink ${s.tool}" data-id="${s.id}" d="${pathData(s.points)}" stroke="${s.color}" stroke-width="${s.width}"/>`;
   }
 
-  function renderInk() {
-    inkLayer.innerHTML = strokes.map(strokeMarkup).join('');
+  // ---------------------------------------------------------------- Figuras (líneas, flechas, poligonales, rectángulos, elipses)
+  const canFill = (r) => r.shape === 'rect' || r.shape === 'ellipse' || (r.shape === 'poly' && !!r.closed);
+  const isFilled = (r) => (isRod(r) ? r.filled !== false : !!r.fill);
+
+  // Con ajuste magnético y cuadrícula, los puntos caen en los cruces de la cuadrícula
+  function snapPoint(p) {
+    return prefs.snap && prefs.grid ? { x: Math.round(p.x), y: Math.round(p.y) } : { x: r3(p.x), y: r3(p.y) };
+  }
+
+  function newDrawing(shape) {
+    return { id: nextId++, shape, x: 0, y: 0, w: 0, h: 0, color: prefs.inkColor, width: PEN_WIDTHS[prefs.inkSize], locked: false, angle: 0 };
+  }
+
+  // Guarda los puntos (absolutos) y recalcula el recuadro que los contiene
+  function setPoints(r, pts) {
+    const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+    r.x = r3(Math.min(...xs)); r.y = r3(Math.min(...ys));
+    r.w = r3(Math.max(...xs) - r.x); r.h = r3(Math.max(...ys) - r.y);
+    r.pts = pts.map((q) => [r3(q.x - r.x), r3(q.y - r.y)]);
+  }
+
+  // Rectángulo o elipse entre dos esquinas opuestas
+  function setBox(r, a, b) {
+    r.x = r3(Math.min(a.x, b.x)); r.y = r3(Math.min(a.y, b.y));
+    r.w = r3(Math.abs(a.x - b.x)); r.h = r3(Math.abs(a.y - b.y));
+  }
+
+  // Contorno como lista de puntos absolutos (lo usa la goma)
+  function outline(r) {
+    if (r.shape === 'rect') return [[0, 0], [r.w, 0], [r.w, r.h], [0, r.h], [0, 0]].map(([u, v]) => [r.x + u, r.y + v]);
+    if (r.shape === 'ellipse') {
+      const pts = [];
+      for (let i = 0; i <= 48; i++) {
+        const a = i / 48 * 2 * Math.PI;
+        pts.push([r.x + r.w / 2 * (1 + Math.cos(a)), r.y + r.h / 2 * (1 + Math.sin(a))]);
+      }
+      return pts;
+    }
+    const pts = r.pts.map(([u, v]) => [r.x + u, r.y + v]);
+    if (r.closed) pts.push(pts[0]);
+    return pts;
+  }
+
+  // Tiradores en coordenadas locales: esquinas del rectángulo; lados de la elipse (estiran en óvalo)
+  // más uno en diagonal que la agranda sin deformarla; extremos o vértices en el resto
+  function shapeHandles(r) {
+    if (r.shape === 'rect') return [[0, 0], [r.w, 0], [r.w, r.h], [0, r.h]];
+    if (r.shape === 'ellipse') {
+      const rx = r.w / 2, ry = r.h / 2;
+      return [[r.w, ry], [0, ry], [rx, 0], [rx, r.h], [rx + rx * Math.SQRT1_2, ry + ry * Math.SQRT1_2]];
+    }
+    return r.pts;
+  }
+
+  // Arrastre de un tirador hasta el punto `raw` (siempre desde la forma inicial `g.start`)
+  function editShape(g, raw) {
+    const r = g.rod, s0 = g.start, p = snapPoint(raw);
+    if (r.shape === 'rect') {
+      const opp = [[s0.x + s0.w, s0.y + s0.h], [s0.x, s0.y + s0.h], [s0.x, s0.y], [s0.x + s0.w, s0.y]][g.h];
+      setBox(r, p, { x: opp[0], y: opp[1] });
+    } else if (r.shape === 'ellipse') {
+      // El centro queda fijo, como con un compás
+      const cx = s0.x + s0.w / 2, cy = s0.y + s0.h / 2;
+      let rx = s0.w / 2, ry = s0.h / 2;
+      if (g.h < 2) rx = Math.abs(p.x - cx);
+      else if (g.h < 4) ry = Math.abs(p.y - cy);
+      else {
+        const k = Math.hypot(raw.x - cx, raw.y - cy) / (Math.hypot(rx, ry) * Math.SQRT1_2 || 1);
+        rx *= k; ry *= k;
+        if (prefs.snap && prefs.grid) { rx = Math.round(rx); ry = Math.round(ry); }
+      }
+      setBox(r, { x: cx - rx, y: cy - ry }, { x: cx + rx, y: cy + ry });
+    } else {
+      const pts = s0.pts.map(([u, v]) => ({ x: s0.x + u, y: s0.y + v }));
+      pts[g.h] = p;
+      setPoints(r, pts);
+    }
+  }
+
+  // Mientras se dibuja con el dedo o el ratón desde `p0`
+  function drawShapeTo(r, p0, raw) {
+    if (r.shape === 'ellipse') {
+      let rad = Math.hypot(raw.x - p0.x, raw.y - p0.y);
+      if (prefs.snap && prefs.grid) rad = Math.round(rad);
+      setBox(r, { x: p0.x - rad, y: p0.y - rad }, { x: p0.x + rad, y: p0.y + rad });
+    } else if (r.shape === 'rect') {
+      setBox(r, p0, snapPoint(raw));
+    } else {
+      setPoints(r, [p0, snapPoint(raw)]);
+    }
+  }
+
+  // Las figuras de tamaño casi nulo (un toque sin arrastrar) no se conservan
+  function tooSmall(r) {
+    if (r.shape === 'rect') return r.w < 0.1 || r.h < 0.1;
+    return r.w < 0.1 && r.h < 0.1;
+  }
+
+  function drawingMarkup(r) {
+    const cls = ['rod', 'sketch'];
+    const fill = r.fill && canFill(r);
+    if (fill) cls.push('filled');
+    if (r.locked) cls.push('locked');
+    if (selection.has(r.id)) cls.push('selected');
+    const pts = r.pts || [];
+    const line = (list) => 'M' + list.map((q) => q.join(' ')).join('L');
+    let geo, hit, extra = '';
+    switch (r.shape) {
+      case 'rect':
+        geo = hit = `<rect width="${r.w}" height="${r.h}"`;
+        break;
+      case 'ellipse':
+        geo = hit = `<ellipse cx="${r3(r.w / 2)}" cy="${r3(r.h / 2)}" rx="${r3(r.w / 2)}" ry="${r3(r.h / 2)}"`;
+        // El centro queda marcado, como el pinchazo del compás
+        extra = `<circle class="draw-center" cx="${r3(r.w / 2)}" cy="${r3(r.h / 2)}" r="${r3(Math.max(0.06, r.width))}" style="fill:${r.color}"/>`;
+        break;
+      case 'free':
+        geo = hit = `<path d="${pathData(pts)}"`;
+        break;
+      case 'arrow': {
+        const [a, b] = pts;
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6;
+        const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len;
+        const L = Math.min(len, Math.max(0.35, r.width * 5)), half = L * 0.5;
+        const base = [r3(b[0] - ux * L), r3(b[1] - uy * L)];
+        geo = `<path d="${line([a, base])}"`;
+        hit = `<path d="${line([a, b])}"`;
+        extra = `<path class="ink" d="M${b.join(' ')}L${r3(base[0] - uy * half)} ${r3(base[1] + ux * half)}L${r3(base[0] + uy * half)} ${r3(base[1] - ux * half)}Z" ` +
+          `stroke="${r.color}" stroke-width="${r3(r.width * 0.6)}" style="fill:${r.color}"/>`;
+        break;
+      }
+      default: // línea y poligonal
+        geo = hit = `<path d="${line(pts)}${r.closed ? 'Z' : ''}"`;
+    }
+    let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">` +
+      `${hit} class="draw-hit"/>` +
+      `${geo} class="ink${r.hl ? ' hl' : ''}" stroke="${r.color}" stroke-width="${r.width}"${fill ? ` style="fill:${r.color};fill-opacity:.22"` : ''}/>` + extra;
+    // Vértices de la poligonal que se está dibujando; el primero, resaltado para cerrarla
+    if (polyDraft && polyDraft.rod === r) {
+      const k = 1 / view.zoom;
+      polyDraft.pts.forEach((q, i) => {
+        s += `<circle class="${i ? 'poly-vertex' : 'poly-start'}" cx="${r3(q.x - r.x)}" cy="${r3(q.y - r.y)}" r="${r3((i ? 0.1 : 0.2) * k)}"/>`;
+      });
+    }
+    if (r.locked) s += `<use href="#i-lock" class="lock-badge" x="${r.w}" y="-0.3" width="0.3" height="0.3"/>`;
+    return s + '</g>';
+  }
+
+  // Poligonal: cada toque fija un vértice; tocar el primero la cierra y tocar el último la termina
+  function polyDown(e, w) {
+    const p = snapPoint(w);
+    const near = (q) => Math.hypot(q.x - p.x, q.y - p.y) < Math.min(0.45, 16 / scale());
+    if (polyDraft) {
+      const pts = polyDraft.pts;
+      if (pts.length >= 3 && near(pts[0])) { polyDraft.rod.closed = true; finishPoly(); return; }
+      if (near(pts[pts.length - 1])) { finishPoly(); return; }
+      pts.push(p);
+    } else {
+      const r = newDrawing('poly');
+      rods.push(r);
+      polyDraft = { rod: r, pts: [p] };
+      toast(t('polyHint'));
+    }
+    setPoints(polyDraft.rod, polyDraft.pts);
+    renderRods();
+    gesture = { type: 'polyPt', pid: e.pointerId };
+  }
+
+  function finishPoly() {
+    if (!polyDraft) return;
+    const { rod, pts } = polyDraft;
+    polyDraft = null;
+    if (pts.length < 2) deleteRods([rod]); else setPoints(rod, pts);
+    renderRods();
+    commit();
   }
 
   function segDist(p, a, b) {
@@ -873,8 +1060,8 @@
     return Math.hypot(p.x - (a[0] + k * dx), p.y - (a[1] + k * dy));
   }
 
-  function strokeHit(s, p, rad) {
-    const pts = s.points;
+  function drawingHit(r, p, rad) {
+    const pts = outline(r);
     if (pts.length === 1) return Math.hypot(p.x - pts[0][0], p.y - pts[0][1]) <= rad;
     for (let i = 0; i < pts.length - 1; i++) if (segDist(p, pts[i], pts[i + 1]) <= rad) return true;
     return false;
@@ -888,11 +1075,11 @@
     let removed = false;
     for (let i = 1; i <= steps; i++) {
       const p = { x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps };
-      const before = strokes.length;
-      strokes = strokes.filter((s) => !strokeHit(s, p, rad + s.width / 2));
-      if (strokes.length !== before) removed = true;
+      // La goma borra dibujos y figuras enteros (no los bloqueados), nunca regletas ni textos
+      const hit = rods.filter((r) => isDrawing(r) && !r.locked && drawingHit(r, p, rad + r.width / 2));
+      if (hit.length) { deleteRods(hit); removed = true; }
     }
-    if (removed) renderInk();
+    if (removed) renderRods();
     return removed;
   }
 
@@ -969,6 +1156,7 @@
     const groupMap = new Map();
     const copies = list.map((r) => {
       const c = Object.assign({}, r, { id: nextId++, locked: false });
+      if (r.pts) c.pts = r.pts.map((q) => q.slice());
       if (r.group) {
         if (!groupMap.has(r.group)) groupMap.set(r.group, nextId++);
         c.group = groupMap.get(r.group);
@@ -1052,15 +1240,16 @@
   function refreshRodMenu() {
     const list = selectedRods();
     if (!list.length) return;
-    const bars = list.filter((r) => !isText(r));
-    const allFilled = bars.every((r) => r.filled !== false);
+    const bars = list.filter(isRod);
+    const fillable = list.filter((r) => isRod(r) || canFill(r));
+    const allFilled = fillable.every(isFilled);
     const allLocked = list.every((r) => r.locked);
     const anyLocked = list.some((r) => r.locked);
     $('#fillIcon').setAttribute('href', allFilled ? '#i-box-check' : '#i-box');
     $('#numberText').textContent = t(bars.every((r) => r.numbered) ? 'unnumber' : 'number');
-    // Con solo textos no tienen sentido el relleno ni la numeración; y los textos no giran
+    // Relleno: regletas y figuras cerradas; numeración: solo regletas; textos y dibujos no giran
     rodMenu.querySelector('[data-act="edit"]').hidden = !(list.length === 1 && isText(list[0]));
-    rodMenu.querySelector('[data-act="fill"]').hidden = !bars.length;
+    rodMenu.querySelector('[data-act="fill"]').hidden = !fillable.length;
     rodMenu.querySelector('[data-act="number"]').hidden = !bars.length;
     $('#lockIcon').setAttribute('href', allLocked ? '#i-unlock' : '#i-lock');
     const lockBtn = rodMenu.querySelector('[data-act="lock"]');
@@ -1110,15 +1299,20 @@
     const list = selectedRods();
     if (!list.length) return;
     const unlocked = list.filter((r) => !r.locked);
-    const bars = list.filter((r) => !isText(r));
+    const bars = list.filter(isRod);
     switch (act) {
       case 'edit':
         if (list.length === 1 && isText(list[0])) openTextEditor(list[0]);
         return;
       case 'fill': {
-        if (!bars.length) return;
-        const allFilled = bars.every((r) => r.filled !== false);
-        bars.forEach((r) => { r.filled = !allFilled; });
+        const fillable = list.filter((r) => isRod(r) || canFill(r));
+        if (!fillable.length) return;
+        const allFilled = fillable.every(isFilled);
+        fillable.forEach((r) => {
+          if (isRod(r)) r.filled = !allFilled;
+          else if (allFilled) delete r.fill;
+          else r.fill = true;
+        });
         break;
       }
       case 'number': {
@@ -1335,6 +1529,15 @@
       closeRodMenu();
       if (prefs.tool === 'eraser') {
         gesture = { type: 'erase', pid: e.pointerId, last: w, changed: eraseAlong(w, w) };
+      } else if (prefs.tool === 'poly') {
+        polyDown(e, w);
+      } else if (SHAPE_TOOLS.includes(prefs.tool)) {
+        const p0 = snapPoint(w);
+        const r = newDrawing(prefs.tool === 'circle' ? 'ellipse' : prefs.tool);
+        drawShapeTo(r, p0, p0);
+        rods.push(r);
+        renderRods();
+        gesture = { type: 'shape', pid: e.pointerId, rod: r, p0 };
       } else {
         const hl = prefs.tool === 'highlighter';
         const s = {
@@ -1347,6 +1550,15 @@
         inkLayer.insertAdjacentHTML('beforeend', strokeMarkup(s));
         gesture = { type: 'draw', pid: e.pointerId, stroke: s, el: inkLayer.lastElementChild };
       }
+      return;
+    }
+
+    // Tirador de una figura
+    const sh = e.target.closest('.shape-hit');
+    if (sh && mode === 'select' && selection.size === 1) {
+      const r = selectedRods()[0];
+      closeRodMenu();
+      gesture = { type: 'shapeEdit', pid: e.pointerId, rod: r, h: +sh.dataset.h, start: { x: r.x, y: r.y, w: r.w, h: r.h, pts: r.pts }, moved: false };
       return;
     }
 
@@ -1469,11 +1681,14 @@
     if (!gesture) return;
     const g = gesture;
     gesture = null;
-    if (g.type === 'drag' || g.type === 'resize' || g.type === 'rotate' || g.type === 'rotateBlock') {
+    if (g.type === 'drag' || g.type === 'resize' || g.type === 'rotate' || g.type === 'rotateBlock' || g.type === 'shapeEdit') {
       hideAngle();
       revert();
     } else if (g.type === 'draw') {
       if (g.el) g.el.remove();
+    } else if (g.type === 'shape') {
+      deleteRods([g.rod]);
+      renderRods();
     } else if (g.type === 'erase') {
       if (g.changed) commit();
     } else if (g.type === 'palette' && g.rod) {
@@ -1513,6 +1728,11 @@
     if (!g) {
       if (drawMode && prefs.tool === 'eraser' && board.contains(e.target)) {
         updateEraserCursor(screenToWorld(e.clientX, e.clientY));
+      }
+      // Con ratón, la poligonal muestra el siguiente lado hasta el puntero
+      if (drawMode && polyDraft && board.contains(e.target)) {
+        setPoints(polyDraft.rod, polyDraft.pts.concat([snapPoint(screenToWorld(e.clientX, e.clientY))]));
+        renderRods();
       }
       return;
     }
@@ -1629,6 +1849,26 @@
         break;
       }
 
+      case 'shape':
+        drawShapeTo(g.rod, g.p0, screenToWorld(e.clientX, e.clientY));
+        renderRods();
+        break;
+
+      case 'polyPt': {
+        const pts = polyDraft && polyDraft.pts;
+        if (!pts) break;
+        pts[pts.length - 1] = snapPoint(screenToWorld(e.clientX, e.clientY));
+        setPoints(polyDraft.rod, pts);
+        renderRods();
+        break;
+      }
+
+      case 'shapeEdit':
+        editShape(g, screenToWorld(e.clientX, e.clientY));
+        g.moved = true;
+        renderRods();
+        break;
+
       case 'draw': {
         const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
         const pts = g.stroke.points;
@@ -1726,9 +1966,24 @@
           positionRodMenu();
         }
         break;
-      case 'draw':
-        strokes.push(g.stroke);
+      case 'draw': {
+        // El trazo terminado pasa a ser un dibujo que luego se puede seleccionar y mover
+        const st = g.stroke;
+        g.el.remove();
+        const r = newDrawing('free');
+        Object.assign(r, { id: st.id, color: st.color, width: st.width });
+        if (st.tool === 'hl') r.hl = true;
+        setPoints(r, st.points.map(([x, y]) => ({ x, y })));
+        rods.push(r);
+        renderRods();
         commit();
+        break;
+      }
+      case 'shape':
+        if (tooSmall(g.rod)) { deleteRods([g.rod]); renderRods(); } else commit();
+        break;
+      case 'shapeEdit':
+        if (g.moved) { commit(); positionRodMenu(); }
         break;
       case 'erase':
         if (g.changed) commit();
@@ -1796,6 +2051,7 @@
     }
     if (mod) return;
 
+    if (polyDraft && (e.key === 'Escape' || e.key === 'Enter')) { finishPoly(); return; }
     if (e.key === 'Escape') {
       if (!colorsDialog.hidden) { closeColors(); return; }
       if (!rodMenu.hidden || !labelsMenu.hidden || !settingsMenu.hidden) { closeRodMenu(); closePopovers(); }
@@ -1844,6 +2100,7 @@
 
   // ---------------------------------------------------------------- Modo dibujo
   function setDrawMode(on) {
+    finishPoly();
     drawMode = on;
     cancelGesture();
     document.body.classList.toggle('drawing', on);
@@ -1884,6 +2141,7 @@
   $('#drawTools').addEventListener('click', (e) => {
     const b = e.target.closest('.db-tool');
     if (!b) return;
+    finishPoly();
     prefs.tool = b.dataset.tool;
     updateDrawbar();
     saveSoon();
@@ -1904,9 +2162,11 @@
   });
   $('#drawExit').addEventListener('click', () => setDrawMode(false));
   $('#drawClear').addEventListener('click', () => {
-    if (!strokes.length) return;
-    strokes = [];
-    renderInk();
+    finishPoly();
+    const ink = rods.filter((r) => isDrawing(r) && !r.locked);
+    if (!ink.length) return;
+    deleteRods(ink);
+    renderRods();
     commit();
     toast(t('inkCleared'), t('undo'), undo);
   });
@@ -1955,7 +2215,7 @@
   $('#btnPalette').addEventListener('click', () => setPref('paletteOpen', !prefs.paletteOpen));
   // Con regletas seleccionadas, el menú de etiquetas solo cambia esas regletas
   function refreshLabelsMenu() {
-    const list = selectedRods().filter((r) => !isText(r));
+    const list = selectedRods().filter(isRod);
     const modes = new Set(list.map((r) => r.label || 'inherit'));
     const current = selection.size ? (modes.size === 1 ? [...modes][0] : null) : prefs.labelMode;
     $('#labelsScope').hidden = !selection.size;
@@ -1976,7 +2236,7 @@
   labelsMenu.addEventListener('click', (e) => {
     const item = e.target.closest('[data-mode]');
     const chip = e.target.closest('[data-ref]');
-    const list = selectedRods().filter((r) => !isText(r));
+    const list = selectedRods().filter(isRod);
     if (item && selection.size) {
       const m = item.dataset.mode;
       list.forEach((r) => { if (m === 'inherit') delete r.label; else r.label = m; });
@@ -1997,14 +2257,13 @@
 
   $('#btnReset').addEventListener('click', () => {
     cancelGesture();
-    const hadContent = rods.length || strokes.length;
+    polyDraft = null;
+    const hadContent = rods.length;
     rods = [];
-    strokes = [];
     selection.clear();
     chain = null;
     closeRodMenu();
     renderRods();
-    renderInk();
     view.x = UNIT; view.y = UNIT; view.zoom = 1;
     applyView();
     if (hadContent) {
@@ -2196,7 +2455,7 @@
     if (drawMode) setDrawMode(false);
     // Con una regleta seleccionada, el texto nace dentro de ella, a la izquierda, con su misma altura,
     // y se une a ella para que la acompañe; si no, centrado en la vista y con letra grande
-    const host = selectedRods().filter((o) => !isText(o)).sort((a, b) => aabb(a).y0 - aabb(b).y0 || aabb(a).x0 - aabb(b).x0)[0];
+    const host = selectedRods().filter(isRod).sort((a, b) => aabb(a).y0 - aabb(b).y0 || aabb(a).x0 - aabb(b).x0)[0];
     const r = { id: nextId++, text: '', size: host ? 0.8 : prefs.titleSize, x: 0, y: 0, locked: false, angle: 0 };
     if (host) {
       const c = host.angle ? rodCorners(host)[0] : { x: host.x, y: host.y };
@@ -2394,7 +2653,6 @@
   bRect = board.getBoundingClientRect();
   applyView();
   renderRods();
-  renderInk();
   current = snapshot();
   afterChange();
 })();

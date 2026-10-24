@@ -143,7 +143,12 @@ El botón **Texto** (o la tecla `T`) añade un texto en el lienzo y abre un **te
 ### Modo dibujo (pizarra)
 
 - **Lápiz** y **subrayador** semitransparente, en tres grosores y 11 colores.
-- **Goma** que borra trazos sin tocar las regletas.
+- **Figuras**: **línea recta**, **flecha**, **línea poligonal**, **rectángulo** y **circunferencia** (se arrastra desde el centro, como con un compás). Con *Ajuste magnético* y la cuadrícula visible, los extremos y vértices caen en los cruces de la cuadrícula y los radios son enteros.
+- **Poligonal**: se toca en cada vértice; tocar el primero cierra la figura y tocar el último (o pulsar `Enter`/`Esc`) la termina.
+- **Todo lo dibujado se puede mover después**: fuera del modo dibujo, los trazos y figuras se seleccionan, arrastran, duplican, bloquean, unen con regletas y eliminan igual que las regletas.
+- **Modificar una figura**: al seleccionarla aparecen tiradores en los extremos, vértices o esquinas. La circunferencia tiene tiradores en los lados para estirarla en óvalo (el centro queda fijo) y uno en diagonal para agrandarla sin deformarla.
+- **Relleno suave** (semitransparente) para rectángulos, circunferencias y poligonales cerradas, desde el menú de la figura.
+- **Goma** que borra trazos y figuras enteros sin tocar las regletas ni los textos.
 - **Borrar todo** (solo los dibujos) y **Salir** para volver a manipular regletas.
 
 ### Accesibilidad e idiomas

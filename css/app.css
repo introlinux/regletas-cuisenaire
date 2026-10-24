@@ -239,6 +239,17 @@ body.mode-pan .handle-hit, body.drawing .handle-hit { pointer-events: none !impo
 
 .ink { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .ink.hl { opacity: .4; mix-blend-mode: multiply; }
+
+/* Dibujos y figuras: se tocan por su trazo (o por dentro si están rellenos) */
+.sketch .draw-hit { fill: none; stroke: transparent; stroke-width: 16px; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; pointer-events: stroke; }
+.sketch.filled .draw-hit { fill: transparent; pointer-events: all; }
+.sketch .draw-center { pointer-events: none; }
+.sketch .lock-badge { color: #555; }
+body.drawing .rod { cursor: crosshair; }
+.shape-hit { fill: transparent; pointer-events: all; cursor: move; }
+.shape-handle { fill: #fff; stroke: var(--sel); stroke-width: 2px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.poly-vertex { fill: var(--sel); pointer-events: none; }
+.poly-start { fill: #fff; stroke: var(--sel); stroke-width: 2.5px; vector-effect: non-scaling-stroke; pointer-events: none; }
 #eraserCursor { fill: rgba(255, 255, 255, .5); stroke: #333; stroke-width: 1.5px; vector-effect: non-scaling-stroke; pointer-events: none; }
 
 .empty-hint {
