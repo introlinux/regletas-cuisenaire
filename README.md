@@ -19,6 +19,7 @@ Pensada para que los niños la usen con el dedo: todos los controles están en u
   - [Colores personalizables](#colores-personalizables)
   - [Giro libre para geometría](#giro-libre-para-geometría)
   - [Lienzo y visualización](#lienzo-y-visualización)
+  - [Textos, números y operaciones](#textos-números-y-operaciones)
   - [Modo dibujo (pizarra)](#modo-dibujo-pizarra)
   - [Accesibilidad e idiomas](#accesibilidad-e-idiomas)
   - [Funcionamiento sin conexión](#funcionamiento-sin-conexión)
@@ -127,6 +128,17 @@ Para construir polígonos. Se activa con el botón **Giro libre** de la barra in
 - **Orientación** horizontal / vertical: gira toda la composición de una vez conservando la colocación entre regletas.
 - **Restaurar** limpia el lienzo (se puede deshacer).
 
+### Textos, números y operaciones
+
+El botón **Texto** (o la tecla `T`) añade un texto en el lienzo y abre un **teclado en pantalla** pensado para escribir rápido en la pizarra digital: cifras, `+ − × ÷ : =`, `< > ≤ ≥`, paréntesis, `%`, `?`, `€` y las letras `a`, `b`, `c`. Con el botón del teclado se puede usar también el teclado del dispositivo, y con un teclado físico se escribe directamente.
+
+- **Fracciones**: `1/2` se dibuja como fracción, con la raya horizontal (también `a/b` y `(a+b)/c`). Un número mixto se escribe `1 1/2`.
+- **Potencias**: `5^2` muestra el 2 como exponente (también `2^(n+1)`).
+- `*` se convierte en `×`, y `<=` y `>=` en `≤` y `≥`.
+- **A pequeña / A grande** cambian el tamaño de la letra; los textos nuevos usan el último tamaño elegido.
+- **Listo** o `Enter` termina; un texto que se deja vacío desaparece.
+- Los textos se seleccionan, mueven, duplican, bloquean, eliminan y **unen** con las regletas igual que estas. Para cambiar uno: doble clic, o tocarlo y elegir **Editar texto** en su menú.
+
 ### Modo dibujo (pizarra)
 
 - **Lápiz** y **subrayador** semitransparente, en tres grosores y 11 colores.
@@ -160,6 +172,7 @@ Para construir polígonos. Se activa con el botón **Giro libre** de la barra in
 | Hacer zoom | Pellizcar, rueda del ratón o botones − / + |
 | Eliminar una regleta | Menú → papelera, o devolverla a la paleta |
 | Girar libremente | Activar *Giro libre* y arrastrar el asa |
+| Escribir un texto o una operación | Botón *Texto* (o tecla `T`); doble clic sobre un texto para cambiarlo |
 | Estirar la regleta especial | Seleccionarla y arrastrar las flechas de su extremo |
 
 ---
@@ -176,6 +189,7 @@ Para construir polígonos. Se activa con el botón **Giro libre** de la barra in
 | `R` | Girar 90° |
 | `D` | Duplicar |
 | `N` | Numerar cuadritos / quitar numeración |
+| `T` | Añadir un texto |
 | `[` / `]` | Girar 3° (con *Giro libre* activado) |
 | Flechas | Mover la selección |
 | `+` / `-` | Zoom |

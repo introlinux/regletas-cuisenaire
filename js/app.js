@@ -48,6 +48,8 @@
     en: ['w', 'p', 'b', 'r', 'g', 'l', 'y', 'n', 'nb', 'dn', 'f', 'P'],
     fr: ['b', 'rs', 'bl', 'r', 'v', 'l', 'j', 'm', 'bf', 'mf', 'f', 'P'],
   };
+  // Tamaños de letra de los textos (en unidades: con 0,8 una línea mide lo mismo que una regleta)
+  const TEXT_SIZES = [0.5, 0.65, 0.8, 1, 1.25, 1.6, 2, 2.5, 3.2];
   const LABEL_MODES = { basic: 'modeBasic', integers: 'modeIntegers', decimals: 'modeDecimals', letters: 'modeLetters', fractions: 'modeFractions' };
 
   // ---------------------------------------------------------------- Utilidades
@@ -64,7 +66,7 @@
   }
 
   // ---------------------------------------------------------------- Estado
-  let rods = [];      // { id, len, custom, x, y, vertical, filled, locked }
+  let rods = [];      // { id, len, custom, x, y, vertical, filled, locked } · textos: { id, text, size, x, y, locked }
   let strokes = [];   // { id, tool: 'pen'|'hl', color, width, points: [[x,y],...] }
   let nextId = 1;
   let selection = new Set();
@@ -91,6 +93,7 @@
     inkSize: 0,
     colorSet: 'cuisenaire', // juego de colores: 'cuisenaire' | 'canals'
     rodColors: {},          // colores personalizados por índice (0..9 regletas, 10 especial)
+    textSize: 0.8,          // tamaño de letra de los textos nuevos
   };
   const view = { x: UNIT, y: UNIT, zoom: 1 };
 
@@ -139,6 +142,7 @@
     updateToolbar();
     buildPalette();
     buildRefChips();
+    buildTextKeys();
     palette.dataset.dropText = t('dropToDelete');
   }
 
@@ -251,6 +255,8 @@
 
   // ---------------------------------------------------------------- Geometría
   function findRod(id) { return rods.find((r) => r.id === id); }
+  // Los textos viven en la misma lista que las regletas: se seleccionan, mueven, unen y bloquean igual
+  const isText = (r) => r.text != null;
   // La regleta personalizable adopta el color de la regleta estándar de su misma longitud (1 a 10)
   const isStandardLen = (len) => Number.isInteger(len) && len >= 1 && len <= 10;
   function styleOf(r) {
@@ -258,6 +264,7 @@
     return r.custom && !isStandardLen(r.len) ? styles[10] : styles[r.len - 1];
   }
   function dims(r) {
+    if (isText(r)) { const L = layoutText(r.text, r.size); return { w: L.w, h: L.h }; }
     if (r.plate) return { w: 10, h: 10 };
     return r.vertical ? { w: 1, h: r.len } : { w: r.len, h: 1 };
   }
@@ -355,7 +362,7 @@
 
   // ¿Se puede mostrar el asa de giro en la selección actual?
   function canFreeRotate(list) {
-    if (!prefs.freeRotate || mode !== 'select' || drawMode || !list.length || list.some((r) => r.locked)) return false;
+    if (!prefs.freeRotate || mode !== 'select' || drawMode || !list.length || list.some((r) => r.locked || isText(r))) return false;
     return list.length === 1 || isSingleBlock(list);
   }
 
@@ -472,6 +479,7 @@
     $('#zoomLabel').textContent = Math.round(view.zoom * 100) + '%';
     if (selection.size) renderSel(); // el asa de giro mantiene su tamaño en pantalla
     positionRodMenu();
+    positionTextEditor();
     saveSoon();
   }
 
@@ -583,8 +591,83 @@
     styles.push(deriveStyle(plate || PLATE_FILL));
   }
 
+  // ---------------------------------------------------------------- Textos y operaciones
+  // Escritura rápida: "1/2" se muestra como fracción, "5^2" como potencia y "(a+b)/c" agrupa con paréntesis
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  function measure(s, fs) {
+    measureCtx.font = '600 100px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    return measureCtx.measureText(s).width / 100 * fs;
+  }
+  const escHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const unwrap = (s) => (/^\(.*\)$/.test(s) ? s.slice(1, -1) : s);
+  const OPERAND = '\\([^()]*\\)|\\d+(?:[.,]\\d+)?|[A-Za-zÀ-ÖØ-öø-ÿ]+|\\?';
+  const MATH_RE = new RegExp(`(${OPERAND})\\/(${OPERAND})|(${OPERAND})\\^(-?(?:${OPERAND}))`, 'g');
+
+  // Trozos de texto: { s } texto normal, { s, sup } base con exponente, { n, d } fracción
+  function parseMath(str) {
+    str = str.replace(/\*/g, '×').replace(/<=/g, '≤').replace(/>=/g, '≥');
+    const toks = [];
+    let last = 0;
+    for (const m of str.matchAll(MATH_RE)) {
+      if (m.index > last) toks.push({ s: str.slice(last, m.index) });
+      if (m[1] != null) toks.push({ n: unwrap(m[1]), d: unwrap(m[2]) });
+      else toks.push({ s: m[3], sup: unwrap(m[4]) });
+      last = m.index + m[0].length;
+    }
+    if (last < str.length) toks.push({ s: str.slice(last) });
+    return toks;
+  }
+
+  // Composición del texto en unidades del lienzo (se guarda en caché: dims() la consulta a menudo)
+  const textCache = new Map();
+  function layoutText(str, fs) {
+    const key = fs + '|' + str;
+    let L = textCache.get(key);
+    if (L) return L;
+    const toks = parseMath(str);
+    const h = fs * (toks.some((t) => t.d != null) ? 2.1 : 1.25);
+    const mid = h / 2, pad = fs * 0.15;
+    const text = (v, x, y, size, center) =>
+      `<text x="${r3(x)}" y="${r3(y)}" font-size="${r3(size)}" dominant-baseline="central"${center ? ' text-anchor="middle"' : ''}>${escHtml(v)}</text>`;
+    let x = pad, svg = '';
+    for (const t of toks) {
+      if (t.d != null) {
+        const k = fs * 0.75;
+        const fw = Math.max(measure(t.n, k), measure(t.d, k)) + fs * 0.25;
+        svg += text(t.n, x + fw / 2, mid - fs * 0.45, k, true) +
+          `<path d="M${r3(x + fs * 0.06)} ${r3(mid)}H${r3(x + fw - fs * 0.06)}" stroke-width="${r3(fs * 0.07)}"/>` +
+          text(t.d, x + fw / 2, mid + fs * 0.5, k, true);
+        x += fw;
+      } else {
+        svg += text(t.s, x, mid, fs);
+        x += measure(t.s, fs);
+        if (t.sup != null) {
+          const k = fs * 0.6;
+          svg += text(t.sup, x + fs * 0.03, mid - fs * 0.38, k);
+          x += measure(t.sup, k) + fs * 0.06;
+        }
+      }
+    }
+    L = { w: r3(Math.max(x + pad, fs * 0.9)), h: r3(h), svg };
+    textCache.set(key, L);
+    return L;
+  }
+
+  function textMarkup(r) {
+    const L = layoutText(r.text, r.size);
+    const cls = ['rod', 'text-item'];
+    if (!r.text.trim()) cls.push('empty');
+    if (r.locked) cls.push('locked');
+    if (selection.has(r.id)) cls.push('selected');
+    let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">` +
+      `<rect class="text-hit" width="${L.w}" height="${L.h}"/><g class="txt">${L.svg}</g>`;
+    if (r.locked) s += `<use href="#i-lock" class="lock-badge" x="${L.w}" y="-0.3" width="0.3" height="0.3"/>`;
+    return s + '</g>';
+  }
+
   // ---------------------------------------------------------------- Dibujo de regletas
   function rodMarkup(r) {
+    if (isText(r)) return textMarkup(r);
     const st = styleOf(r);
     const { w, h } = dims(r);
     const filled = r.filled !== false;
@@ -946,16 +1029,21 @@
   function refreshRodMenu() {
     const list = selectedRods();
     if (!list.length) return;
-    const allFilled = list.every((r) => r.filled !== false);
+    const bars = list.filter((r) => !isText(r));
+    const allFilled = bars.every((r) => r.filled !== false);
     const allLocked = list.every((r) => r.locked);
     const anyLocked = list.some((r) => r.locked);
     $('#fillIcon').setAttribute('href', allFilled ? '#i-box-check' : '#i-box');
-    $('#numberText').textContent = t(list.every((r) => r.numbered) ? 'unnumber' : 'number');
+    $('#numberText').textContent = t(bars.every((r) => r.numbered) ? 'unnumber' : 'number');
+    // Con solo textos no tienen sentido el relleno ni la numeración; y los textos no giran
+    rodMenu.querySelector('[data-act="edit"]').hidden = !(list.length === 1 && isText(list[0]));
+    rodMenu.querySelector('[data-act="fill"]').hidden = !bars.length;
+    rodMenu.querySelector('[data-act="number"]').hidden = !bars.length;
     $('#lockIcon').setAttribute('href', allLocked ? '#i-unlock' : '#i-lock');
     const lockBtn = rodMenu.querySelector('[data-act="lock"]');
     lockBtn.title = t(allLocked ? 'unlock' : 'lock');
     lockBtn.setAttribute('aria-label', lockBtn.title);
-    rodMenu.querySelector('[data-act="rotate"]').disabled = anyLocked;
+    rodMenu.querySelector('[data-act="rotate"]').disabled = anyLocked || bars.length !== list.length;
     rodMenu.querySelector('[data-act="delete"]').disabled = allLocked;
     const oneBlock = isSingleBlock(list);
     const groupBtn = rodMenu.querySelector('[data-act="group"]');
@@ -999,19 +1087,25 @@
     const list = selectedRods();
     if (!list.length) return;
     const unlocked = list.filter((r) => !r.locked);
+    const bars = list.filter((r) => !isText(r));
     switch (act) {
+      case 'edit':
+        if (list.length === 1 && isText(list[0])) openTextEditor(list[0]);
+        return;
       case 'fill': {
-        const allFilled = list.every((r) => r.filled !== false);
-        list.forEach((r) => { r.filled = !allFilled; });
+        if (!bars.length) return;
+        const allFilled = bars.every((r) => r.filled !== false);
+        bars.forEach((r) => { r.filled = !allFilled; });
         break;
       }
       case 'number': {
-        if (list.every((r) => r.numbered)) list.forEach((r) => { delete r.numbered; delete r.numStart; delete r.numBlock; });
-        else numberAsBlock(list);
+        if (!bars.length) return;
+        if (bars.every((r) => r.numbered)) bars.forEach((r) => { delete r.numbered; delete r.numStart; delete r.numBlock; });
+        else numberAsBlock(bars);
         break;
       }
       case 'rotate':
-        if (unlocked.length !== list.length) return;
+        if (unlocked.length !== list.length || bars.length !== list.length) return;
         if (list.length > 1 && isSingleBlock(list) && list.some((r) => r.angle)) {
           rotateBlockBy(list, 90);
           bringToFront(list);
@@ -1653,7 +1747,15 @@
   document.addEventListener('pointerdown', (e) => {
     if (!e.target.closest('.popover') && !e.target.closest('[aria-haspopup]')) closePopovers();
     if (!e.target.closest('#rodMenu') && !e.target.closest('#board')) closeRodMenu();
+    if (editing && !e.target.closest('#textEditor')) closeTextEditor();
   }, true);
+
+  // Doble clic sobre un texto: editarlo
+  board.addEventListener('dblclick', (e) => {
+    const el = e.target.closest('.text-item');
+    const r = el && !drawMode && findRod(+el.dataset.id);
+    if (r) openTextEditor(r);
+  });
 
   // ---------------------------------------------------------------- Teclado
   document.addEventListener('keydown', (e) => {
@@ -1680,6 +1782,7 @@
     }
     if (e.key === '+' || e.key === '=') { zoomCenter(1.2); return; }
     if (e.key === '-') { zoomCenter(1 / 1.2); return; }
+    if (key === 't' && !drawMode) { e.preventDefault(); addText(); return; }
 
     const list = selectedRods();
     if (!list.length || drawMode) return;
@@ -1829,12 +1932,12 @@
   $('#btnPalette').addEventListener('click', () => setPref('paletteOpen', !prefs.paletteOpen));
   // Con regletas seleccionadas, el menú de etiquetas solo cambia esas regletas
   function refreshLabelsMenu() {
-    const list = selectedRods();
+    const list = selectedRods().filter((r) => !isText(r));
     const modes = new Set(list.map((r) => r.label || 'inherit'));
-    const current = list.length ? (modes.size === 1 ? [...modes][0] : null) : prefs.labelMode;
-    $('#labelsScope').hidden = !list.length;
+    const current = selection.size ? (modes.size === 1 ? [...modes][0] : null) : prefs.labelMode;
+    $('#labelsScope').hidden = !selection.size;
     $('#labelsScope').textContent = t(list.length === 1 ? 'labelsOne' : 'labelsSelection', { n: list.length });
-    labelsMenu.querySelector('[data-mode="inherit"]').hidden = !list.length;
+    labelsMenu.querySelector('[data-mode="inherit"]').hidden = !selection.size;
     $('#labelsInheritText').textContent = t('labelsInherit', { mode: t(LABEL_MODES[prefs.labelMode]) });
     $$('#labelsMenu .menu-item').forEach((b) => b.classList.toggle('active', b.dataset.mode === current));
     // La regleta que vale 1 es común a todas: se muestra si algún etiquetado la usa
@@ -1850,8 +1953,8 @@
   labelsMenu.addEventListener('click', (e) => {
     const item = e.target.closest('[data-mode]');
     const chip = e.target.closest('[data-ref]');
-    const list = selectedRods();
-    if (item && list.length) {
+    const list = selectedRods().filter((r) => !isText(r));
+    if (item && selection.size) {
       const m = item.dataset.mode;
       list.forEach((r) => { if (m === 'inherit') delete r.label; else r.label = m; });
       renderRods();
@@ -2027,6 +2130,166 @@
     if (b && !b.disabled) rodAction(b.dataset.act);
   });
 
+  // ---------------------------------------------------------------- Editor de textos
+  const textEditor = $('#textEditor');
+  const teInput = $('#teInput');
+  let editing = null; // texto que se está escribiendo
+
+  // Teclado en pantalla de 8 columnas; también se puede escribir con el teclado del dispositivo
+  const TE_KEYS = [
+    '7', '8', '9', '+', '−', '×', '÷', { k: 'back' },
+    '4', '5', '6', '=', ':', '(', ')', '?',
+    '1', '2', '3', '<', '>', '≤', '≥', '%',
+    ',', '0', '.', { k: 'frac', v: '/' }, { k: 'pow', v: '^' }, 'a', 'b', 'c',
+    { k: 'space', v: ' ', span: 3 }, '€', { k: 'left' }, { k: 'right' }, { k: 'keyboard' }, { k: 'done' },
+  ];
+
+  function buildTextKeys() {
+    const ico = (id) => `<svg class="ico"><use href="#${id}"/></svg>`;
+    const faces = {
+      back: [ico('i-backspace'), 'backspace'],
+      frac: ['<span class="k-frac"><i>a</i><i>b</i></span>', 'fraction'],
+      pow: ['x<sup>n</sup>', 'power'],
+      space: [t('space'), 'space'],
+      left: [ico('i-chevron-left'), 'cursorLeft'],
+      right: [ico('i-chevron-right'), 'cursorRight'],
+      keyboard: [ico('i-keyboard'), 'deviceKeyboard'],
+      done: [t('done'), 'done'],
+    };
+    $('#teKeys').innerHTML = TE_KEYS.map((key, i) => {
+      if (typeof key === 'string') {
+        const cls = /[0-9,.]/.test(key) ? 'num' : /^[abc]$/.test(key) ? 'var' : 'op';
+        return `<button type="button" class="te-key ${cls}" data-i="${i}">${escHtml(key)}</button>`;
+      }
+      const [face, title] = faces[key.k];
+      const cls = key.k === 'done' ? 'done' : key.v ? 'op' : 'fn';
+      return `<button type="button" class="te-key ${cls}" data-i="${i}" title="${t(title)}" aria-label="${t(title)}"` +
+        `${key.span ? ` style="grid-column: span ${key.span}"` : ''}${key.k === 'keyboard' ? ' aria-pressed="false"' : ''}>${face}</button>`;
+    }).join('');
+  }
+
+  function addText() {
+    if (drawMode) setDrawMode(false);
+    const r = { id: nextId++, text: '', size: prefs.textSize, x: 0, y: 0, locked: false, angle: 0 };
+    const p = findFreeSpot(3, dims(r).h, false);
+    r.x = p.x; r.y = p.y;
+    rods.push(r);
+    selectOnly(r.id);
+    chain = null;
+    renderRods();
+    ensureVisible([r]);
+    openTextEditor(r);
+  }
+
+  function openTextEditor(r) {
+    closeRodMenu();
+    closePopovers();
+    editing = r;
+    teInput.value = r.text;
+    textEditor.hidden = false;
+    updateSizeButtons();
+    positionTextEditor();
+    teInput.focus({ preventScroll: true });
+    teInput.setSelectionRange(r.text.length, r.text.length);
+  }
+
+  // Al terminar, un texto vacío desaparece
+  function closeTextEditor() {
+    if (!editing) return;
+    const r = editing;
+    editing = null;
+    textEditor.hidden = true;
+    teInput.blur();
+    if (!r.text.trim()) deleteRods([r]);
+    renderRods();
+    commit();
+  }
+
+  // Debajo del texto; si no cabe, encima
+  function positionTextEditor() {
+    if (!editing) return;
+    const s = scale();
+    const b = bounds([editing]);
+    const left = bRect.left + view.x + b.x0 * s;
+    const top = bRect.top + view.y + b.y0 * s;
+    const bottom = bRect.top + view.y + b.y1 * s;
+    const mw = textEditor.offsetWidth, mh = textEditor.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let y = bottom + 10;
+    if (y + mh > vh - 8) y = top - 10 - mh;
+    textEditor.style.left = clamp(left, 8, vw - mw - 8) + 'px';
+    textEditor.style.top = clamp(y, 8, vh - mh - 8) + 'px';
+  }
+
+  function textChanged() {
+    editing.text = teInput.value;
+    renderRods();
+    positionTextEditor();
+  }
+
+  function updateSizeButtons() {
+    const i = TEXT_SIZES.indexOf(editing.size);
+    $('#teSmaller').disabled = i === 0;
+    $('#teBigger').disabled = i === TEXT_SIZES.length - 1;
+  }
+
+  function changeTextSize(dir) {
+    let i = TEXT_SIZES.indexOf(editing.size);
+    if (i < 0) i = TEXT_SIZES.indexOf(0.8);
+    editing.size = prefs.textSize = TEXT_SIZES[clamp(i + dir, 0, TEXT_SIZES.length - 1)];
+    updateSizeButtons();
+    renderRods();
+    positionTextEditor();
+    saveSoon();
+  }
+
+  function textKey(key) {
+    const len = teInput.value.length;
+    const a = teInput.selectionStart != null ? teInput.selectionStart : len;
+    const b = teInput.selectionEnd != null ? teInput.selectionEnd : a;
+    if (typeof key === 'string' || key.v) {
+      teInput.setRangeText(typeof key === 'string' ? key : key.v, a, b, 'end');
+      textChanged();
+      return;
+    }
+    switch (key.k) {
+      case 'back':
+        if (a !== b) teInput.setRangeText('', a, b, 'end');
+        else if (a > 0) teInput.setRangeText('', a - 1, a, 'end');
+        textChanged();
+        break;
+      case 'left': { const p = a === b ? Math.max(0, a - 1) : Math.min(a, b); teInput.setSelectionRange(p, p); break; }
+      case 'right': { const p = a === b ? Math.min(len, a + 1) : Math.max(a, b); teInput.setSelectionRange(p, p); break; }
+      case 'keyboard': {
+        // Muestra u oculta el teclado del sistema (en pantallas táctiles)
+        const on = teInput.inputMode === 'none';
+        teInput.inputMode = on ? 'text' : 'none';
+        $('#teKeys [aria-pressed]').setAttribute('aria-pressed', String(on));
+        teInput.blur();
+        teInput.focus({ preventScroll: true });
+        break;
+      }
+      case 'done':
+        closeTextEditor();
+        break;
+    }
+  }
+
+  // Los botones no roban el foco al cuadro de texto: así se conserva la posición del cursor
+  textEditor.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  textEditor.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !editing) return;
+    if (b.id === 'teSmaller') changeTextSize(-1);
+    else if (b.id === 'teBigger') changeTextSize(1);
+    else if (b.dataset.i != null) textKey(TE_KEYS[+b.dataset.i]);
+  });
+  teInput.addEventListener('input', () => { if (editing) textChanged(); });
+  teInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeTextEditor(); }
+  });
+  $('#btnText').addEventListener('click', addText);
+
   // ---------------------------------------------------------------- Instalación PWA
   let installEvent = null;
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -2063,7 +2326,7 @@
     positionRodMenu();
   }).observe(board);
 
-  window.addEventListener('resize', () => { closePopovers(); positionRodMenu(); });
+  window.addEventListener('resize', () => { closePopovers(); positionRodMenu(); positionTextEditor(); });
   window.addEventListener('pagehide', saveNow);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
 
@@ -2073,6 +2336,7 @@
   if (!window.I18N[prefs.lang]) prefs.lang = 'es';
   if (prefs.colorSet !== 'canals') prefs.colorSet = 'cuisenaire';
   if (!prefs.rodColors || typeof prefs.rodColors !== 'object') prefs.rodColors = {};
+  if (!TEXT_SIZES.includes(prefs.textSize)) prefs.textSize = 0.8;
   computeStyles();
   buildDrawbar();
   applyI18n();

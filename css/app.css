@@ -355,6 +355,59 @@ body.mode-pan .handle-hit, body.drawing .handle-hit { pointer-events: none !impo
 .icon-btn.danger { color: var(--danger); }
 .icon-btn:disabled { opacity: .3; cursor: default; background: transparent; }
 
+/* ---------- Textos sobre el lienzo ---------- */
+.text-hit { fill: transparent; stroke: none; pointer-events: all; }
+.text-item.empty .text-hit { stroke: var(--muted); stroke-width: 1.5px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.txt { pointer-events: none; color: #1a1a1a; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 600; }
+.txt text { fill: currentColor; white-space: pre; }
+.txt path { stroke: currentColor; fill: none; }
+.text-item .lock-badge { color: #1a1a1a; }
+
+/* ---------- Editor de textos ---------- */
+.text-editor {
+  position: fixed; z-index: 21;
+  width: min(420px, calc(100vw - 16px));
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.te-head { display: flex; gap: 6px; margin-bottom: 8px; }
+.te-head input {
+  flex: 1; min-width: 0; height: 44px; padding: 0 10px;
+  border: 2px solid var(--accent); border-radius: 8px;
+  font: 600 22px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text);
+  -webkit-user-select: text; user-select: text;
+}
+.te-head input:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.te-size {
+  width: 40px; height: 44px; flex: none; padding: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--text); font-weight: 700; cursor: pointer;
+}
+.te-size.small { font-size: 13px; }
+.te-size.big { font-size: 22px; }
+.te-size:disabled { opacity: .35; cursor: default; }
+.te-keys { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.te-key {
+  height: 44px; padding: 0; border: 0; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--text);
+  font: 500 20px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; cursor: pointer;
+}
+.te-key.num { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+.te-key.var { background: #fff3d6; font-style: italic; }
+.te-key.fn { background: var(--hover); font-size: 15px; }
+.te-key.done { background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
+.te-key:active { filter: brightness(.9); }
+.te-key[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.te-key sup { font-size: 12px; }
+.k-frac { display: inline-flex; flex-direction: column; align-items: center; font-size: 14px; line-height: 1.1; }
+.k-frac i { font-style: normal; padding: 0 3px; }
+.k-frac i:first-child { border-bottom: 2px solid currentColor; }
+body.hc .te-key { box-shadow: inset 0 0 0 1px var(--line); }
+
 /* ---------- Diálogo de colores ---------- */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 30;
