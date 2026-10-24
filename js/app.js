@@ -93,7 +93,7 @@
     inkSize: 0,
     colorSet: 'cuisenaire', // juego de colores: 'cuisenaire' | 'canals'
     rodColors: {},          // colores personalizados por índice (0..9 regletas, 10 especial)
-    textSize: 0.8,          // tamaño de letra de los textos nuevos
+    titleSize: 1.6,         // tamaño de letra de los textos libres (los de dentro de una regleta miden lo que ella)
   };
   const view = { x: UNIT, y: UNIT, zoom: 1 };
 
@@ -653,14 +653,30 @@
     return L;
   }
 
+  // Regleta unida a un texto sobre la que este empieza (su etiqueta), o null
+  function textHost(r) {
+    if (!r.group) return null;
+    const L = layoutText(r.text, r.size);
+    const px = r.x + Math.min(L.w, 1) / 2, py = r.y + L.h / 2;
+    const dot = [{ x: px, y: py }, { x: px + 0.01, y: py }, { x: px + 0.01, y: py + 0.01 }, { x: px, y: py + 0.01 }];
+    for (let i = rods.length - 1; i >= 0; i--) {
+      const o = rods[i];
+      if (!isText(o) && o.group === r.group && polygonsIntersect(rodCorners(o), dot)) return o;
+    }
+    return null;
+  }
+
   function textMarkup(r) {
     const L = layoutText(r.text, r.size);
+    // Sobre una regleta, el texto toma el color de sus etiquetas para que se lea bien (blanco sobre la azul…)
+    const host = textHost(r);
+    const color = host && host.filled !== false ? styleOf(host).text : null;
     const cls = ['rod', 'text-item'];
     if (!r.text.trim()) cls.push('empty');
     if (r.locked) cls.push('locked');
     if (selection.has(r.id)) cls.push('selected');
     let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">` +
-      `<rect class="text-hit" width="${L.w}" height="${L.h}"/><g class="txt">${L.svg}</g>`;
+      `<rect class="text-hit" width="${L.w}" height="${L.h}"/><g class="txt"${color ? ` style="color:${color}"` : ''}>${L.svg}</g>`;
     if (r.locked) s += `<use href="#i-lock" class="lock-badge" x="${L.w}" y="-0.3" width="0.3" height="0.3"/>`;
     return s + '</g>';
   }
@@ -694,7 +710,8 @@
     }
 
     const hasHandle = r.custom && !r.locked;
-    s += r.numbered ? numbersMarkup(r, ink, hasHandle && selected) : labelMarkup(r, w, h, ink, hasHandle);
+    if (r.numbered) s += numbersMarkup(r, ink, hasHandle && selected);
+    else if (!labelledRods.has(r)) s += labelMarkup(r, w, h, ink, hasHandle);
 
     if (hasHandle) {
       if (r.vertical) {
@@ -814,8 +831,12 @@
     selLayer.innerHTML = html + sel.map(selMarkup).join('');
   }
 
+  let labelledRods = new Set();
   function renderRods() {
-    rodsLayer.innerHTML = rods.map(rodMarkup).join('');
+    // Una regleta con un texto escrito encima no muestra su propia etiqueta, para que no se monten
+    labelledRods = new Set(rods.filter((r) => isText(r) && r.text.trim()).map(textHost).filter(Boolean));
+    // Los textos se dibujan siempre por encima de las regletas
+    rodsLayer.innerHTML = rods.filter((r) => !isText(r)).concat(rods.filter(isText)).map(rodMarkup).join('');
     renderSel();
   }
 
@@ -1013,6 +1034,8 @@
   function deleteRods(list) {
     const set = new Set(list);
     rods = rods.filter((r) => !set.has(r));
+    // Un bloque que se queda con una sola pieza deja de ser bloque
+    for (const r of rods) if (r.group && !rods.some((o) => o !== r && o.group === r.group)) delete r.group;
     pruneSelection();
     if (!selection.size) closeRodMenu();
   }
@@ -2133,7 +2156,8 @@
   // ---------------------------------------------------------------- Editor de textos
   const textEditor = $('#textEditor');
   const teInput = $('#teInput');
-  let editing = null; // texto que se está escribiendo
+  let editing = null;   // texto que se está escribiendo
+  let centerX = null;  // en un texto libre nuevo, su centro: crece hacia los dos lados mientras se escribe
 
   // Teclado en pantalla de 8 columnas; también se puede escribir con el teclado del dispositivo
   const TE_KEYS = [
@@ -2170,21 +2194,40 @@
 
   function addText() {
     if (drawMode) setDrawMode(false);
-    const r = { id: nextId++, text: '', size: prefs.textSize, x: 0, y: 0, locked: false, angle: 0 };
-    const p = findFreeSpot(3, dims(r).h, false);
-    r.x = p.x; r.y = p.y;
+    // Con una regleta seleccionada, el texto nace dentro de ella, a la izquierda, con su misma altura,
+    // y se une a ella para que la acompañe; si no, centrado en la vista y con letra grande
+    const host = selectedRods().filter((o) => !isText(o)).sort((a, b) => aabb(a).y0 - aabb(b).y0 || aabb(a).x0 - aabb(b).x0)[0];
+    const r = { id: nextId++, text: '', size: host ? 0.8 : prefs.titleSize, x: 0, y: 0, locked: false, angle: 0 };
+    if (host) {
+      const c = host.angle ? rodCorners(host)[0] : { x: host.x, y: host.y };
+      r.x = r3(c.x); r.y = r3(c.y);
+      r.group = host.group || nextId++;
+      host.group = r.group;
+    } else {
+      // A un tercio de la altura (el teclado cabe debajo) o en la fila libre más cercana
+      const vw = visibleWorld(), h = dims(r).h;
+      const cx = (vw.x0 + vw.x1) / 2, y0 = Math.round(vw.y0 + (vw.y1 - vw.y0) * 0.3 - h / 2);
+      r.x = Math.round(cx - 1.5);
+      r.y = y0;
+      for (let k = 0; k < 60; k++) {
+        const y = y0 + (k % 2 ? -1 : 1) * Math.ceil(k / 2);
+        if (!overlaps(cx - 4, y, 8, h)) { r.y = y; break; }
+      }
+    }
     rods.push(r);
     selectOnly(r.id);
     chain = null;
     renderRods();
     ensureVisible([r]);
     openTextEditor(r);
+    if (!host) centerX = r.x + dims(r).w / 2;
   }
 
   function openTextEditor(r) {
     closeRodMenu();
     closePopovers();
     editing = r;
+    centerX = null;
     teInput.value = r.text;
     textEditor.hidden = false;
     updateSizeButtons();
@@ -2198,6 +2241,7 @@
     if (!editing) return;
     const r = editing;
     editing = null;
+    centerX = null;
     textEditor.hidden = true;
     teInput.blur();
     if (!r.text.trim()) deleteRods([r]);
@@ -2221,8 +2265,13 @@
     textEditor.style.top = clamp(y, 8, vh - mh - 8) + 'px';
   }
 
+  function recenter() {
+    if (centerX != null) editing.x = r3(centerX - dims(editing).w / 2);
+  }
+
   function textChanged() {
     editing.text = teInput.value;
+    recenter();
     renderRods();
     positionTextEditor();
   }
@@ -2236,7 +2285,9 @@
   function changeTextSize(dir) {
     let i = TEXT_SIZES.indexOf(editing.size);
     if (i < 0) i = TEXT_SIZES.indexOf(0.8);
-    editing.size = prefs.textSize = TEXT_SIZES[clamp(i + dir, 0, TEXT_SIZES.length - 1)];
+    editing.size = TEXT_SIZES[clamp(i + dir, 0, TEXT_SIZES.length - 1)];
+    if (!editing.group) prefs.titleSize = editing.size; // se recuerda para los próximos textos libres
+    recenter();
     updateSizeButtons();
     renderRods();
     positionTextEditor();
@@ -2336,7 +2387,7 @@
   if (!window.I18N[prefs.lang]) prefs.lang = 'es';
   if (prefs.colorSet !== 'canals') prefs.colorSet = 'cuisenaire';
   if (!prefs.rodColors || typeof prefs.rodColors !== 'object') prefs.rodColors = {};
-  if (!TEXT_SIZES.includes(prefs.textSize)) prefs.textSize = 0.8;
+  if (!TEXT_SIZES.includes(prefs.titleSize)) prefs.titleSize = 1.6;
   computeStyles();
   buildDrawbar();
   applyI18n();

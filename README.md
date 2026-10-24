@@ -135,7 +135,8 @@ El botón **Texto** (o la tecla `T`) añade un texto en el lienzo y abre un **te
 - **Fracciones**: `1/2` se dibuja como fracción, con la raya horizontal (también `a/b` y `(a+b)/c`). Un número mixto se escribe `1 1/2`.
 - **Potencias**: `5^2` muestra el 2 como exponente (también `2^(n+1)`).
 - `*` se convierte en `×`, y `<=` y `>=` en `≤` y `≥`.
-- **A pequeña / A grande** cambian el tamaño de la letra; los textos nuevos usan el último tamaño elegido.
+- **Dónde aparece**: sin nada seleccionado, centrado en la vista y con letra grande, para títulos y operaciones que se vean desde toda la clase (crece hacia los dos lados mientras se escribe). Con una regleta seleccionada, **dentro de ella, a la izquierda y con su misma altura**, para etiquetarla (por ejemplo, «5 patatas» en la amarilla): queda unida a la regleta, toma su color de letra y oculta la etiqueta propia de la regleta.
+- **A pequeña / A grande** cambian el tamaño de la letra; los textos libres nuevos usan el último tamaño elegido.
 - **Listo** o `Enter` termina; un texto que se deja vacío desaparece.
 - Los textos se seleccionan, mueven, duplican, bloquean, eliminan y **unen** con las regletas igual que estas. Para cambiar uno: doble clic, o tocarlo y elegir **Editar texto** en su menú.
 
