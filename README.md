@@ -97,6 +97,8 @@ En *Decimales* y *Fracciones* se elige **qué regleta vale 1**: cualquiera de la
 
 Las etiquetas también se muestran en la paleta y siempre se mantienen derechas, aunque la regleta esté girada.
 
+**Etiquetado de solo algunas regletas:** si hay regletas seleccionadas, el selector de etiquetas cambia únicamente esas; sin selección, cambia el etiquetado general. Así se pueden mezclar, por ejemplo, `a = v + r` junto a `5 = 3 + 2`, o `5 = 3 + r`. La opción *Etiquetado general* devuelve las regletas seleccionadas al etiquetado de las demás.
+
 ### Colores personalizables
 
 En **Ajustes → Colores de las regletas**:

@@ -520,8 +520,8 @@
   }
 
   // ---------------------------------------------------------------- Etiquetas
-  function labelFor(len, custom) {
-    switch (prefs.labelMode) {
+  function labelFor(len, custom, mode = prefs.labelMode) {
+    switch (mode) {
       case 'integers':
         return { text: fmtNum(len, 1) };
       case 'decimals': {
@@ -632,7 +632,9 @@
 
   function labelMarkup(r, w, h, color, hasHandle) {
     // Una regleta sin relleno no desvela su valor: muestra "?" si las etiquetas están activadas
-    const lab = r.filled === false ? (prefs.labelMode === 'basic' ? null : { text: '?' }) : labelFor(r.len, r.custom);
+    // Cada regleta puede tener su propio etiquetado (`label`); si no, sigue el general
+    const mode = r.label || prefs.labelMode;
+    const lab = r.filled === false ? (mode === 'basic' ? null : { text: '?' }) : labelFor(r.len, r.custom, mode);
     if (!lab) return '';
     let cx = w / 2, cy = h / 2;
     // Deja sitio al asidero de la regleta personalizable
@@ -1789,8 +1791,7 @@
     palette.hidden = !prefs.paletteOpen;
     $('#labelsText').textContent = t(LABEL_MODES[prefs.labelMode]);
     document.body.dataset.labels = prefs.labelMode;
-    $$('#labelsMenu .menu-item').forEach((b) => b.classList.toggle('active', b.dataset.mode === prefs.labelMode));
-    $('#refRow').hidden = !(prefs.labelMode === 'decimals' || prefs.labelMode === 'fractions');
+    refreshLabelsMenu();
     $$('.ref-chip').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.ref === prefs.ref)));
 
     $('#btnModeSelect').setAttribute('aria-pressed', String(mode === 'select' && !drawMode));
@@ -1826,7 +1827,22 @@
   }
 
   $('#btnPalette').addEventListener('click', () => setPref('paletteOpen', !prefs.paletteOpen));
-  $('#btnLabels').addEventListener('click', (e) => togglePopover(e.currentTarget, labelsMenu));
+  // Con regletas seleccionadas, el menú de etiquetas solo cambia esas regletas
+  function refreshLabelsMenu() {
+    const list = selectedRods();
+    const modes = new Set(list.map((r) => r.label || 'inherit'));
+    const current = list.length ? (modes.size === 1 ? [...modes][0] : null) : prefs.labelMode;
+    $('#labelsScope').hidden = !list.length;
+    $('#labelsScope').textContent = t(list.length === 1 ? 'labelsOne' : 'labelsSelection', { n: list.length });
+    labelsMenu.querySelector('[data-mode="inherit"]').hidden = !list.length;
+    $('#labelsInheritText').textContent = t('labelsInherit', { mode: t(LABEL_MODES[prefs.labelMode]) });
+    $$('#labelsMenu .menu-item').forEach((b) => b.classList.toggle('active', b.dataset.mode === current));
+    // La regleta que vale 1 es común a todas: se muestra si algún etiquetado la usa
+    const used = [prefs.labelMode, ...rods.map((r) => r.label)];
+    $('#refRow').hidden = !used.some((m) => m === 'decimals' || m === 'fractions');
+  }
+
+  $('#btnLabels').addEventListener('click', (e) => { refreshLabelsMenu(); togglePopover(e.currentTarget, labelsMenu); });
   $('#btnSettings').addEventListener('click', (e) => togglePopover(e.currentTarget, settingsMenu));
   $('#btnModeSelect').addEventListener('click', () => setMode('select'));
   $('#btnModePan').addEventListener('click', () => setMode('pan'));
@@ -1834,11 +1850,20 @@
   labelsMenu.addEventListener('click', (e) => {
     const item = e.target.closest('[data-mode]');
     const chip = e.target.closest('[data-ref]');
-    if (item) setPref('labelMode', item.dataset.mode);
-    else if (chip) setPref('ref', +chip.dataset.ref);
-    else return;
-    buildPalette();
-    renderRods();
+    const list = selectedRods();
+    if (item && list.length) {
+      const m = item.dataset.mode;
+      list.forEach((r) => { if (m === 'inherit') delete r.label; else r.label = m; });
+      renderRods();
+      commit();
+      refreshLabelsMenu();
+    } else {
+      if (item) setPref('labelMode', item.dataset.mode);
+      else if (chip) setPref('ref', +chip.dataset.ref);
+      else return;
+      buildPalette();
+      renderRods();
+    }
     // El menú cambia de alto al mostrar u ocultar la fila de referencia: se recoloca encima del botón
     const r = $('#btnLabels').getBoundingClientRect();
     labelsMenu.style.top = Math.max(8, r.top - 6 - labelsMenu.offsetHeight) + 'px';
