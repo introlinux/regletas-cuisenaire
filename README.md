@@ -106,6 +106,7 @@ En **Ajustes → Colores de las regletas**:
 
 - Dos juegos de colores listos: **Cuisenaire** y **María Antonia Canals** (madera natural, rosa, azul, rojo, verde, lila, amarillo, marrón, azul oscuro y marrón oscuro).
 - **Color de cada regleta a elección**, incluidas la especial y la placa de 100 (color canela clarito por defecto). El borde y el color del texto se calculan solos para que se lean bien.
+- **Autocoloreado de la regleta especial** (activado por defecto): al estirarla hasta medir de 1 a 10 toma el color de esa regleta. Desactivándolo, la especial conserva siempre su color, para que el color no delate su valor cuando es la que hay que averiguar.
 - Botón para restaurar los colores del juego elegido.
 
 ### Giro libre para geometría

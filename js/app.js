@@ -96,6 +96,7 @@
     inkSize: 0,
     colorSet: 'cuisenaire', // juego de colores: 'cuisenaire' | 'canals'
     rodColors: {},          // colores personalizados por índice (0..9 regletas, 10 especial)
+    autoColorSpecial: true, // la regleta especial toma el color de la regleta de su misma longitud
     titleSize: 1.6,         // tamaño de letra de los textos libres (los de dentro de una regleta miden lo que ella)
   };
   const view = { x: UNIT, y: UNIT, zoom: 1 };
@@ -268,11 +269,13 @@
   const isText = (r) => r.text != null;
   const isDrawing = (r) => r.shape != null;
   const isRod = (r) => !isText(r) && !isDrawing(r);
-  // La regleta personalizable adopta el color de la regleta estándar de su misma longitud (1 a 10)
+  // La regleta personalizable adopta el color de la regleta estándar de su misma longitud (1 a 10),
+  // salvo que se desactive el autocoloreado (así el color no delata su valor)
   const isStandardLen = (len) => Number.isInteger(len) && len >= 1 && len <= 10;
+  const keepsSpecialColor = (len, custom) => custom && (!prefs.autoColorSpecial || !isStandardLen(len));
   function styleOf(r) {
     if (r.plate) return styles[11];
-    return r.custom && !isStandardLen(r.len) ? styles[10] : styles[r.len - 1];
+    return keepsSpecialColor(r.len, r.custom) ? styles[10] : styles[r.len - 1];
   }
   function dims(r) {
     if (isText(r)) { const L = layoutText(r.text, r.size); return { w: L.w, h: L.h }; }
@@ -545,7 +548,7 @@
       }
       case 'letters':
         if (!custom && len === 100) return { text: letters()[11] };
-        return { text: custom && !isStandardLen(len) ? letters()[10] : letters()[len - 1] };
+        return { text: keepsSpecialColor(len, custom) ? letters()[10] : letters()[len - 1] };
       case 'fractions': {
         let n = len, d = prefs.ref;
         if (!Number.isInteger(n)) { n = Math.round(len * 10); d = prefs.ref * 10; }
@@ -2350,6 +2353,7 @@
 
   function buildColorsDialog() {
     $$('.preset-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.set === prefs.colorSet)));
+    $('#optAutoColor').checked = prefs.autoColorSpecial;
     $$('[data-swatches]').forEach((el) => {
       const fills = el.dataset.swatches === 'canals' ? CANALS_FILLS : ROD_STYLES.map((st) => st.fill);
       el.innerHTML = fills.slice(0, 10).map((f, i) => `<i style="background:${f};height:${8 + i * 2}px"></i>`).join('');
@@ -2376,6 +2380,11 @@
   function closeColors() { colorsDialog.hidden = true; }
 
   $('#btnColors').addEventListener('click', openColors);
+  $('#optAutoColor').addEventListener('change', (e) => {
+    prefs.autoColorSpecial = e.target.checked;
+    renderRods();
+    saveSoon();
+  });
   $('#colorsClose').addEventListener('click', closeColors);
   colorsDialog.addEventListener('click', (e) => {
     if (e.target === colorsDialog) { closeColors(); return; }
