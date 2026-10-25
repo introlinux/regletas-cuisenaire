@@ -73,7 +73,7 @@
   let polyDraft = null; // poligonal que se está dibujando: { rod, pts: vértices ya fijados }
   let nextId = 1;
   let selection = new Set();
-  let mode = 'select'; // 'select': seleccionar y mover regletas · 'pan': mover el lienzo · 'cut': tijeras
+  let mode = 'select'; // 'select': seleccionar y mover regletas · 'pan': mover el lienzo · 'cut': tijeras · 'glue': pegar
   let drawMode = false;
   let chain = null;    // inserción rápida por clic: última regleta añadida
   let gesture = null;
@@ -1233,11 +1233,15 @@
     }
   }
 
+  // Un bloque que se queda con una sola pieza deja de ser bloque
+  function cleanGroups() {
+    for (const r of rods) if (r.group && !rods.some((o) => o !== r && o.group === r.group)) delete r.group;
+  }
+
   function deleteRods(list) {
     const set = new Set(list);
     rods = rods.filter((r) => !set.has(r));
-    // Un bloque que se queda con una sola pieza deja de ser bloque
-    for (const r of rods) if (r.group && !rods.some((o) => o !== r && o.group === r.group)) delete r.group;
+    cleanGroups();
     pruneSelection();
     if (!selection.size) closeRodMenu();
   }
@@ -1538,13 +1542,21 @@
 
   // ---------------------------------------------------------------- Tijeras
   // Dónde cortaría un toque en `p`: la separación de cuadritos más cercana, o null si no se puede
+  // Esquinas y direcciones de una regleta: `lh` a lo largo, `wh` a lo ancho; y sus dos extremos
+  // (cada uno, el par de esquinas de ese lado, en el mismo orden para el inicio y el final)
+  function rodAxes(r) {
+    const c = rodCorners(r);
+    const { w, h } = dims(r);
+    const uh = { x: (c[1].x - c[0].x) / w, y: (c[1].y - c[0].y) / w };
+    const vh = { x: (c[3].x - c[0].x) / h, y: (c[3].y - c[0].y) / h };
+    return r.vertical
+      ? { c0: c[0], lh: vh, wh: uh, start: [c[0], c[1]], end: [c[3], c[2]] }
+      : { c0: c[0], lh: uh, wh: vh, start: [c[0], c[3]], end: [c[1], c[2]] };
+  }
+
   function cutAt(r, p) {
     if (!isRod(r) || r.plate || r.locked) return null;
-    const [c0, c1, , c3] = rodCorners(r);
-    const { w, h } = dims(r);
-    const uh = { x: (c1.x - c0.x) / w, y: (c1.y - c0.y) / w };
-    const vh = { x: (c3.x - c0.x) / h, y: (c3.y - c0.y) / h };
-    const [lh, wh] = r.vertical ? [vh, uh] : [uh, vh]; // a lo largo y a lo ancho de la regleta
+    const { c0, lh, wh } = rodAxes(r);
     const t = (p.x - c0.x) * lh.x + (p.y - c0.y) * lh.y;
     const k = clamp(Math.round(t), 1, Math.ceil(r.len - 1e-6) - 1);
     if (k < 1 || k >= r.len - 1e-6) return null;
@@ -1577,15 +1589,78 @@
     commit();
   }
 
-  // Con ratón, una línea discontinua muestra dónde se cortará
+  // ---------------------------------------------------------------- Pegar
+  // Dos regletas puestas una a continuación de la otra (el final de `first` coincide con el inicio
+  // de `second`, en la misma dirección) cuya separación está cerca de `p`; o null
+  function joinAt(r, p) {
+    if (!isRod(r) || r.plate) return null;
+    const ax = rodAxes(r);
+    const t = (p.x - ax.c0.x) * ax.lh.x + (p.y - ax.c0.y) * ax.lh.y;
+    const reach = Math.min(r.len / 2, Math.max(0.6, 24 / scale()));
+    const atStart = t < r.len / 2;
+    if (atStart ? t > reach : r.len - t > reach) return null;
+    const same = (a, b) => Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y) < 0.05 && Math.hypot(a[1].x - b[1].x, a[1].y - b[1].y) < 0.05;
+    for (const o of rods) {
+      if (o === r || !isRod(o) || o.plate) continue;
+      const ox = rodAxes(o);
+      if (ox.lh.x * ax.lh.x + ox.lh.y * ax.lh.y < 0.99) continue;
+      if (atStart && same(ox.end, ax.start)) return { first: o, second: r, edge: ax.start, wh: ax.wh };
+      if (!atStart && same(ax.end, ox.start)) return { first: r, second: o, edge: ax.end, wh: ax.wh };
+    }
+    return null;
+  }
+
+  // Une las dos regletas en una de la suma de sus longitudes: regleta normal si mide de 1 a 10 y las dos
+  // lo eran; si no, regleta especial. Conserva giro, bloque, relleno y, si la tenían, la numeración.
+  function joinRods(j) {
+    const { first: a, second: b } = j;
+    const len = r3(a.len + b.len);
+    const custom = a.custom || b.custom || !isStandardLen(len);
+    const m = Object.assign({}, a, { id: nextId++, len, custom });
+    if (!custom) delete m.color; else if (!m.color && b.color) m.color = b.color;
+    m.filled = !(a.filled === false && b.filled === false);
+    if (a.label !== b.label) delete m.label;
+    if (!m.group && b.group) m.group = b.group;
+    if (a.numbered || b.numbered) {
+      // La numeración empieza donde empezaba la del trozo que lleva los primeros números
+      const up = m.vertical && prefs.numberFromBottom;
+      const [lo, hi] = up ? [b, a] : [a, b];
+      const s0 = lo.numbered ? (lo.numStart || 0) : Math.max(0, (hi.numStart || 0) - Math.floor(lo.len + 1e-6));
+      m.numbered = true;
+      if (s0) m.numStart = s0; else delete m.numStart;
+      if (!m.numBlock && b.numBlock) m.numBlock = b.numBlock;
+    }
+    const { c0, lh, wh } = rodAxes(a);
+    const cx = c0.x + lh.x * len / 2 + wh.x / 2, cy = c0.y + lh.y * len / 2 + wh.y / 2;
+    const d = dims(m);
+    m.x = r3(cx - d.w / 2); m.y = r3(cy - d.h / 2);
+    const i = Math.min(rods.indexOf(a), rods.indexOf(b));
+    rods = rods.filter((r) => r !== a && r !== b);
+    rods.splice(i, 0, m);
+    cleanGroups();
+    pruneSelection();
+    renderRods();
+    commit();
+  }
+
+  // Con ratón, una línea discontinua muestra dónde se cortará (roja) o se pegará (verde)
   const cutLine = $('#cutLine');
   function showCutLine(r, p) {
     const cut = r && cutAt(r, p);
     if (!cut) { cutLine.setAttribute('display', 'none'); return; }
     const { k, c0, lh, wh } = cut;
     const x1 = c0.x + lh.x * k, y1 = c0.y + lh.y * k;
-    cutLine.setAttribute('x1', r3(x1 - wh.x * 0.3)); cutLine.setAttribute('y1', r3(y1 - wh.y * 0.3));
-    cutLine.setAttribute('x2', r3(x1 + wh.x * 1.3)); cutLine.setAttribute('y2', r3(y1 + wh.y * 1.3));
+    drawGuide({ x: x1, y: y1 }, { x: x1 + wh.x, y: y1 + wh.y }, wh, false);
+  }
+  function showJoinLine(r, p) {
+    const j = r && joinAt(r, p);
+    if (!j) { cutLine.setAttribute('display', 'none'); return; }
+    drawGuide(j.edge[0], j.edge[1], j.wh, true);
+  }
+  function drawGuide(a, b, wh, join) {
+    cutLine.setAttribute('x1', r3(a.x - wh.x * 0.3)); cutLine.setAttribute('y1', r3(a.y - wh.y * 0.3));
+    cutLine.setAttribute('x2', r3(b.x + wh.x * 0.3)); cutLine.setAttribute('y2', r3(b.y + wh.y * 0.3));
+    cutLine.classList.toggle('join', join);
     cutLine.setAttribute('display', '');
   }
 
@@ -1687,6 +1762,16 @@
       const cut = r && cutAt(r, w);
       if (cut) { cutRod(r, cut); showCutLine(null); return; }
       if (r && isRod(r) && (r.plate || r.locked)) toast(t(r.plate ? 'cantCutPlate' : 'cantCutLocked'));
+      startPan(e);
+      return;
+    }
+
+    // Pegar: tocar la separación entre dos regletas seguidas las une; arrastrar sobre el fondo mueve el lienzo
+    if (mode === 'glue' && e.button !== 1) {
+      const j = r && joinAt(r, w);
+      if (j && (j.first.locked || j.second.locked)) toast(t('cantCutLocked'));
+      else if (j) { joinRods(j); showCutLine(null); return; }
+      else if (r && isRod(r)) toast(t('joinHint'));
       startPan(e);
       return;
     }
@@ -1818,9 +1903,9 @@
       if (drawMode && prefs.tool === 'eraser' && board.contains(e.target)) {
         updateEraserCursor(screenToWorld(e.clientX, e.clientY));
       }
-      if (mode === 'cut' && !drawMode) {
+      if ((mode === 'cut' || mode === 'glue') && !drawMode) {
         const el = board.contains(e.target) && e.target.closest('.rod');
-        showCutLine(el && findRod(+el.dataset.id), screenToWorld(e.clientX, e.clientY));
+        (mode === 'cut' ? showCutLine : showJoinLine)(el && findRod(+el.dataset.id), screenToWorld(e.clientX, e.clientY));
       }
       // Con ratón, la poligonal muestra el siguiente lado hasta el puntero
       if (drawMode && polyDraft && board.contains(e.target)) {
@@ -2339,6 +2424,8 @@
     $('#btnModeCut').setAttribute('aria-pressed', String(mode === 'cut' && !drawMode));
     document.body.classList.toggle('mode-pan', mode === 'pan');
     document.body.classList.toggle('mode-cut', mode === 'cut');
+    $('#btnModeGlue').setAttribute('aria-pressed', String(mode === 'glue' && !drawMode));
+    document.body.classList.toggle('mode-glue', mode === 'glue');
 
     $('#orientIcon').setAttribute('href', prefs.vertical ? '#i-orient-v' : '#i-orient-h');
     $('#orientText').textContent = t(prefs.vertical ? 'vertical' : 'horizontal');
@@ -2389,6 +2476,7 @@
   $('#btnModeSelect').addEventListener('click', () => setMode('select'));
   $('#btnModePan').addEventListener('click', () => setMode('pan'));
   $('#btnModeCut').addEventListener('click', () => setMode('cut'));
+  $('#btnModeGlue').addEventListener('click', () => setMode('glue'));
 
   labelsMenu.addEventListener('click', (e) => {
     const item = e.target.closest('[data-mode]');
