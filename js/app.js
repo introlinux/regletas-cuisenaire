@@ -2792,7 +2792,7 @@
     renderRods();
     ensureVisible([r]);
     openTextEditor(r);
-    anchor = anc || (host ? null : { x: r.x + dims(r).w / 2 });
+    anchor = anc || (host || brace ? null : { x: r.x + dims(r).w / 2 }); // junto al pico derecho de una llave, crece hacia la derecha
     recenter();
     renderRods();
     positionTextEditor();
