@@ -15,7 +15,7 @@
   const PEN_WIDTHS = [0.06, 0.12, 0.22];
   const HL_WIDTHS = [0.35, 0.6, 1];
   const SHAPE_TOOLS = ['line', 'arrow', 'rect', 'circle']; // se dibujan arrastrando (la poligonal va por toques)
-  const INK_COLORS = ['#1a1a1a', '#e53935', '#1e88e5', '#43a047', '#fdd835', '#fb8c00', '#8e24aa', '#6d4c41', '#9e9e9e', '#ec407a', '#ffffff'];
+  const INK_COLORS = ['#1a1a1a', '#e53935', '#90caf9', '#a5d6a7']; // negro, rojo y dos tonos pastel; el quinto se elige
 
   // Colores de las regletas 1..10 (índice = valor - 1)
   const ROD_STYLES = [
@@ -93,6 +93,9 @@
     paletteOpen: true,
     tool: 'pen',
     inkColor: INK_COLORS[0],
+    inkCustom: '#8e24aa',   // quinto color de dibujo, elegido con el selector
+    inkFill: false,         // rectángulos, circunferencias y poligonales cerradas nacen con relleno suave
+    drawbarPos: null,       // posición de la barra de dibujo si se ha arrastrado ({ x, y } en px)
     inkSize: 0,
     colorSet: 'cuisenaire', // juego de colores: 'cuisenaire' | 'canals'
     rodColors: {},          // colores personalizados por índice (0..9 regletas, 10 especial)
@@ -273,8 +276,14 @@
   // salvo que se desactive el autocoloreado (así el color no delata su valor)
   const isStandardLen = (len) => Number.isInteger(len) && len >= 1 && len <= 10;
   const keepsSpecialColor = (len, custom) => custom && (!prefs.autoColorSpecial || !isStandardLen(len));
+  const ownStyles = new Map();
   function styleOf(r) {
     if (r.plate) return styles[11];
+    // Color elegido para esta regleta especial desde su menú
+    if (r.custom && r.color) {
+      if (!ownStyles.has(r.color)) ownStyles.set(r.color, deriveStyle(r.color));
+      return ownStyles.get(r.color);
+    }
     return keepsSpecialColor(r.len, r.custom) ? styles[10] : styles[r.len - 1];
   }
   function dims(r) {
@@ -537,7 +546,7 @@
   }
 
   // ---------------------------------------------------------------- Etiquetas
-  function labelFor(len, custom, mode = prefs.labelMode) {
+  function labelFor(len, custom, mode = prefs.labelMode, ownColor = false) {
     switch (mode) {
       case 'integers':
         return { text: fmtNum(len, 1) };
@@ -548,7 +557,7 @@
       }
       case 'letters':
         if (!custom && len === 100) return { text: letters()[11] };
-        return { text: keepsSpecialColor(len, custom) ? letters()[10] : letters()[len - 1] };
+        return { text: ownColor || keepsSpecialColor(len, custom) ? letters()[10] : letters()[len - 1] };
       case 'fractions': {
         let n = len, d = prefs.ref;
         if (!Number.isInteger(n)) { n = Math.round(len * 10); d = prefs.ref * 10; }
@@ -744,7 +753,7 @@
     // Una regleta sin relleno no desvela su valor: muestra "?" si las etiquetas están activadas
     // Cada regleta puede tener su propio etiquetado (`label`); si no, sigue el general
     const mode = r.label || prefs.labelMode;
-    const lab = r.filled === false ? (mode === 'basic' ? null : { text: '?' }) : labelFor(r.len, r.custom, mode);
+    const lab = r.filled === false ? (mode === 'basic' ? null : { text: '?' }) : labelFor(r.len, r.custom, mode, !!r.color);
     if (!lab) return '';
     let cx = w / 2, cy = h / 2;
     // Deja sitio al asidero de la regleta personalizable
@@ -888,7 +897,9 @@
   }
 
   function newDrawing(shape) {
-    return { id: nextId++, shape, x: 0, y: 0, w: 0, h: 0, color: prefs.inkColor, width: PEN_WIDTHS[prefs.inkSize], locked: false, angle: 0 };
+    const r = { id: nextId++, shape, x: 0, y: 0, w: 0, h: 0, color: prefs.inkColor, width: PEN_WIDTHS[prefs.inkSize], locked: false, angle: 0 };
+    if (prefs.inkFill && (shape === 'rect' || shape === 'ellipse' || shape === 'poly')) r.fill = true;
+    return r;
   }
 
   // Guarda los puntos (absolutos) y recalcula el recuadro que los contiene
@@ -1254,6 +1265,16 @@
     rodMenu.querySelector('[data-act="edit"]').hidden = !(list.length === 1 && isText(list[0]));
     rodMenu.querySelector('[data-act="fill"]').hidden = !fillable.length;
     rodMenu.querySelector('[data-act="number"]').hidden = !bars.length;
+    // Color: solo cuando todo lo seleccionado son regletas especiales
+    const specials = list.filter((r) => isRod(r) && r.custom);
+    const colorable = specials.length === list.length;
+    $('#rodColorItem').hidden = !colorable;
+    rodMenu.querySelector('[data-act="uncolor"]').hidden = !colorable || !specials.some((r) => r.color);
+    if (colorable) {
+      const fill = styleOf(specials[0]).fill;
+      $('#rodColorInput').value = fill.toLowerCase();
+      $('#rodColorDot').style.background = fill;
+    }
     $('#lockIcon').setAttribute('href', allLocked ? '#i-unlock' : '#i-lock');
     const lockBtn = rodMenu.querySelector('[data-act="lock"]');
     lockBtn.title = t(allLocked ? 'unlock' : 'lock');
@@ -1307,6 +1328,9 @@
       case 'edit':
         if (list.length === 1 && isText(list[0])) openTextEditor(list[0]);
         return;
+      case 'uncolor':
+        list.forEach((r) => { delete r.color; });
+        break;
       case 'fill': {
         const fillable = list.filter((r) => isRod(r) || canFill(r));
         if (!fillable.length) return;
@@ -2108,6 +2132,7 @@
     cancelGesture();
     document.body.classList.toggle('drawing', on);
     drawbar.hidden = !on;
+    placeDrawbar();
     if (on) {
       closeRodMenu();
       clearSelection();
@@ -2121,7 +2146,8 @@
     $('#drawSizes').innerHTML = [6, 10, 16].map((px, i) =>
       `<button type="button" class="db-size" data-size="${i}"><span style="width:${px}px;height:${px}px"></span></button>`).join('');
     $('#drawColors').innerHTML = INK_COLORS.map((c) =>
-      `<button type="button" class="db-swatch" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('');
+      `<button type="button" class="db-swatch" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('') +
+      `<label class="db-swatch db-custom" id="inkCustomSwatch"><input type="color" id="inkCustom"></label>`;
   }
 
   function updateDrawbar() {
@@ -2133,10 +2159,20 @@
       b.title = t('size');
       b.setAttribute('aria-label', b.title);
     });
-    $$('.db-swatch').forEach((b) => {
+    $$('.db-swatch[data-color]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.color === prefs.inkColor));
       b.disabled = eraser;
     });
+    const sw = $('#inkCustomSwatch');
+    sw.style.setProperty('--c', prefs.inkCustom);
+    sw.setAttribute('aria-pressed', String(!INK_COLORS.includes(prefs.inkColor)));
+    sw.title = t('customColor');
+    sw.classList.toggle('disabled', eraser);
+    $('#inkCustom').value = prefs.inkCustom.toLowerCase();
+    $('#inkCustom').disabled = eraser;
+    const fillBtn = $('#drawFill');
+    fillBtn.setAttribute('aria-pressed', String(prefs.inkFill));
+    fillBtn.disabled = !['rect', 'circle', 'poly'].includes(prefs.tool);
     document.body.classList.toggle('tool-eraser', eraser);
     if (!eraser) updateEraserCursor(null);
   }
@@ -2159,10 +2195,58 @@
   $('#drawColors').addEventListener('click', (e) => {
     const b = e.target.closest('.db-swatch');
     if (!b) return;
-    prefs.inkColor = b.dataset.color;
+    // El quinto color se selecciona al tocarlo y, además, abre el selector para cambiarlo
+    prefs.inkColor = b.dataset.color || prefs.inkCustom;
     updateDrawbar();
     saveSoon();
   });
+  $('#drawColors').addEventListener('input', (e) => {
+    if (e.target.id !== 'inkCustom') return;
+    prefs.inkCustom = prefs.inkColor = e.target.value;
+    updateDrawbar();
+    saveSoon();
+  });
+  $('#drawFill').addEventListener('click', () => {
+    prefs.inkFill = !prefs.inkFill;
+    updateDrawbar();
+    saveSoon();
+  });
+
+  // La barra de dibujo se arrastra por su asa para que no tape lo que se quiere dibujar;
+  // con doble toque en el asa vuelve a su sitio
+  const drawGrip = $('#drawGrip');
+  function placeDrawbar() {
+    const pos = prefs.drawbarPos;
+    if (!pos || drawbar.hidden) {
+      if (!pos) Object.assign(drawbar.style, { left: '', top: '', bottom: '', transform: '' });
+      return;
+    }
+    const wrap = drawbar.parentElement.getBoundingClientRect();
+    const x = clamp(pos.x, 0, Math.max(0, wrap.width - drawbar.offsetWidth));
+    const y = clamp(pos.y, 0, Math.max(0, wrap.height - drawbar.offsetHeight));
+    prefs.drawbarPos = { x, y };
+    Object.assign(drawbar.style, { left: x + 'px', top: y + 'px', bottom: 'auto', transform: 'none' });
+  }
+  drawGrip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const bar = drawbar.getBoundingClientRect(), wrap = drawbar.parentElement.getBoundingClientRect();
+    const ox = e.clientX - bar.left, oy = e.clientY - bar.top;
+    try { drawGrip.setPointerCapture(e.pointerId); } catch (err) { /* ignorar */ }
+    const move = (ev) => {
+      prefs.drawbarPos = { x: Math.round(ev.clientX - wrap.left - ox), y: Math.round(ev.clientY - wrap.top - oy) };
+      placeDrawbar();
+    };
+    const up = () => {
+      drawGrip.removeEventListener('pointermove', move);
+      drawGrip.removeEventListener('pointerup', up);
+      drawGrip.removeEventListener('pointercancel', up);
+      saveSoon();
+    };
+    drawGrip.addEventListener('pointermove', move);
+    drawGrip.addEventListener('pointerup', up);
+    drawGrip.addEventListener('pointercancel', up);
+  });
+  drawGrip.addEventListener('dblclick', () => { prefs.drawbarPos = null; placeDrawbar(); saveSoon(); });
   $('#drawExit').addEventListener('click', () => setDrawMode(false));
   $('#drawClear').addEventListener('click', () => {
     finishPoly();
@@ -2416,6 +2500,15 @@
   });
 
   // Menú de regleta(s)
+  // Selector de color de la regleta especial: se ve en directo y se guarda al cerrarlo
+  $('#rodColorInput').addEventListener('input', (e) => {
+    const value = e.target.value.toUpperCase();
+    selectedRods().filter((r) => isRod(r) && r.custom).forEach((r) => { r.color = value; });
+    $('#rodColorDot').style.background = value;
+    renderRods();
+  });
+  $('#rodColorInput').addEventListener('change', () => { commit(); refreshRodMenu(); });
+
   rodMenu.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (b && !b.disabled) rodAction(b.dataset.act);
@@ -2643,6 +2736,7 @@
     bRect = board.getBoundingClientRect();
     renderGrid();
     positionRodMenu();
+    placeDrawbar();
   }).observe(board);
 
   window.addEventListener('resize', () => { closePopovers(); positionRodMenu(); positionTextEditor(); });
@@ -2656,6 +2750,8 @@
   if (prefs.colorSet !== 'canals') prefs.colorSet = 'cuisenaire';
   if (!prefs.rodColors || typeof prefs.rodColors !== 'object') prefs.rodColors = {};
   if (!TEXT_SIZES.includes(prefs.titleSize)) prefs.titleSize = 1.6;
+  // Un color de dibujo que ya no está en la barra pasa a ser el color elegible
+  if (!INK_COLORS.includes(prefs.inkColor)) prefs.inkCustom = prefs.inkColor;
   computeStyles();
   buildDrawbar();
   applyI18n();

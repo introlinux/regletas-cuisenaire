@@ -46,6 +46,8 @@
     <symbol id="i-box" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/></symbol>
     <symbol id="i-box-check" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
     <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></g></symbol>
+    <symbol id="i-fill" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor" fill-opacity=".35"/></symbol>
     <symbol id="i-line" viewBox="0 0 24 24"><path d="M5 19 19 5"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 19 19 5M10 5h9v9"/></symbol>
     <symbol id="i-poly" viewBox="0 0 24 24"><path d="M3 18 8 6l6 9 7-10"/></symbol>
@@ -92,6 +94,7 @@
 
         <!-- Barra de dibujo -->
         <div class="drawbar" id="drawbar" hidden>
+          <button type="button" class="db-grip" id="drawGrip" data-i18n-title="moveBar"><svg class="ico"><use href="#i-grip"/></svg></button>
           <button type="button" class="db-btn" id="drawExit"><svg class="ico"><use href="#i-x"/></svg><span data-i18n="exit">Salir</span></button>
           <button type="button" class="db-btn" id="drawClear"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="clearInk">Borrar todo</span></button>
           <span class="db-sep"></span>
@@ -106,6 +109,7 @@
             <button type="button" class="db-tool" data-tool="eraser" data-i18n-title="eraser"><svg class="ico"><use href="#i-eraser"/></svg></button>
           </div>
           <span class="db-sep"></span>
+          <button type="button" class="db-tool" id="drawFill" data-i18n-title="fillShapes"><svg class="ico"><use href="#i-fill"/></svg></button>
           <div class="db-group" id="drawSizes"></div>
           <span class="db-sep"></span>
           <div class="db-group db-colors" id="drawColors"></div>
@@ -217,6 +221,8 @@
   <div class="popover rod-menu" id="rodMenu" hidden>
     <button type="button" class="menu-item start" data-act="edit" hidden><svg class="ico"><use href="#i-text"/></svg><span data-i18n="editText">Editar texto</span></button>
     <button type="button" class="menu-item start" data-act="fill"><svg class="ico"><use id="fillIcon" href="#i-box-check"/></svg><span data-i18n="fill">Activar/Desactivar relleno</span></button>
+    <label class="menu-item start color-item" id="rodColorItem" hidden><svg class="ico"><use href="#i-palette"/></svg><span data-i18n="rodColor">Color</span><span class="color-dot" id="rodColorDot"></span><input type="color" id="rodColorInput"></label>
+    <button type="button" class="menu-item start" data-act="uncolor" hidden><svg class="ico"><use href="#i-reset"/></svg><span data-i18n="rodColorReset">Color original</span></button>
     <button type="button" class="menu-item start" data-act="number"><svg class="ico"><use href="#i-hash"/></svg><span id="numberText">Numerar cuadritos</span></button>
     <button type="button" class="menu-item start" data-act="rotate"><svg class="ico"><use href="#i-rotate"/></svg><span data-i18n="rotate">Girar</span></button>
     <button type="button" class="menu-item start" data-act="group" hidden><svg class="ico"><use id="groupIcon" href="#i-link"/></svg><span id="groupText">Unir</span></button>

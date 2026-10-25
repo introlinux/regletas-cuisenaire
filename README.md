@@ -107,6 +107,7 @@ En **Ajustes → Colores de las regletas**:
 - Dos juegos de colores listos: **Cuisenaire** y **María Antonia Canals** (madera natural, rosa, azul, rojo, verde, lila, amarillo, marrón, azul oscuro y marrón oscuro).
 - **Color de cada regleta a elección**, incluidas la especial y la placa de 100 (color canela clarito por defecto). El borde y el color del texto se calculan solos para que se lean bien.
 - **Autocoloreado de la regleta especial** (activado por defecto): al estirarla hasta medir de 1 a 10 toma el color de esa regleta. Desactivándolo, la especial conserva siempre su color, para que el color no delate su valor cuando es la que hay que averiguar.
+- **Color propio de la regleta especial**: en su menú, *Color* abre el selector para darle cualquier color (*Color original* lo deshace). Así se pueden tener regletas de cualquier longitud y color.
 - Botón para restaurar los colores del juego elegido.
 
 ### Giro libre para geometría
@@ -143,12 +144,13 @@ El botón **Texto** (o la tecla `T`) añade un texto en el lienzo y abre un **te
 
 ### Modo dibujo (pizarra)
 
-- **Lápiz** y **subrayador** semitransparente, en tres grosores y 11 colores.
+- **Lápiz** y **subrayador** semitransparente, en tres grosores y cinco colores: negro, rojo, dos tonos pastel y un quinto color que se elige con el selector (el anillo de colores).
 - **Figuras**: **línea recta**, **flecha**, **línea poligonal**, **rectángulo** y **circunferencia** (se arrastra desde el centro, como con un compás). Con *Ajuste magnético* y la cuadrícula visible, los extremos y vértices caen en los cruces de la cuadrícula y los radios son enteros.
 - **Poligonal**: se toca en cada vértice; tocar el primero cierra la figura y tocar el último (o pulsar `Enter`/`Esc`) la termina.
 - **Todo lo dibujado se puede mover después**: fuera del modo dibujo, los trazos y figuras se seleccionan, arrastran, duplican, bloquean, unen con regletas y eliminan igual que las regletas.
 - **Modificar una figura**: al seleccionarla aparecen tiradores en los extremos, vértices o esquinas. La circunferencia tiene tiradores en los lados para estirarla en óvalo (el centro queda fijo) y uno en diagonal para agrandarla sin deformarla.
-- **Relleno suave** (semitransparente) para rectángulos, circunferencias y poligonales cerradas, desde el menú de la figura.
+- **Relleno suave** (semitransparente) para rectángulos, circunferencias y poligonales cerradas: con el botón *Figuras con relleno* de la barra nacen ya rellenas, y desde el menú de cada figura se pone o se quita.
+- **La barra de dibujo se puede mover** arrastrándola por su asa (los seis puntos de la izquierda) para que no tape la zona donde se quiere dibujar; con un doble toque en el asa vuelve a su sitio.
 - **Goma** que borra trazos y figuras enteros sin tocar las regletas ni los textos.
 - **Borrar todo** (solo los dibujos) y **Salir** para volver a manipular regletas.
 
