@@ -9,6 +9,8 @@
   const STORAGE_KEY = 'regletas-cuisenaire.v1';
   const CUSTOM_DEFAULT_LEN = 12;
   const CUSTOM_MAX_LEN = 200;
+  const BRACE_DEFAULT_LEN = 6;
+  const BRACE_COLOR = '#1A1A1A';
   const DRAG_THRESHOLD = 5;        // px antes de considerar que hay arrastre
   const PAL_SIZE = 32;             // lado de la regleta 1 en la paleta (px)
   const PAL_STEP = 6;              // crecimiento de cada regleta en la paleta (px)
@@ -271,7 +273,11 @@
   // Los textos viven en la misma lista que las regletas: se seleccionan, mueven, unen y bloquean igual
   const isText = (r) => r.text != null;
   const isDrawing = (r) => r.shape != null;
-  const isRod = (r) => !isText(r) && !isDrawing(r);
+  // Llaves: { brace: true, len, vertical, flip, color }. Se estiran y giran como la regleta especial.
+  const isBrace = (r) => !!r.brace;
+  const isRod = (r) => !isText(r) && !isDrawing(r) && !isBrace(r);
+  const turnable = (r) => isRod(r) || isBrace(r); // lo que gira 90° con «Girar»
+  const hasOwnColor = (r) => (isRod(r) && r.custom) || isBrace(r); // admite «Color» en su menú
   // La regleta personalizable adopta el color de la regleta estándar de su misma longitud (1 a 10),
   // salvo que se desactive el autocoloreado (así el color no delata su valor)
   const isStandardLen = (len) => Number.isInteger(len) && len >= 1 && len <= 10;
@@ -700,8 +706,41 @@
   }
 
   // ---------------------------------------------------------------- Dibujo de regletas
+  // Flechas del extremo para estirar (regleta especial y llaves)
+  function handleMarkup(r, w, h, ink) {
+    if (r.vertical) {
+      const cy = h - 0.32;
+      return `<g class="handle"><rect class="handle-hit" x="-0.1" y="${h - 0.65}" width="1.2" height="0.85"/>` +
+        `<path class="handle-arrows" fill="${ink}" d="M0.5 ${cy - 0.22}L0.34 ${cy - 0.04}H0.66ZM0.5 ${cy + 0.22}L0.34 ${cy + 0.04}H0.66Z"/></g>`;
+    }
+    const cx = w - 0.32;
+    return `<g class="handle"><rect class="handle-hit" x="${w - 0.65}" y="-0.1" width="0.85" height="1.2"/>` +
+      `<path class="handle-arrows" fill="${ink}" d="M${cx - 0.22} 0.5L${cx - 0.04} 0.34V0.66ZM${cx + 0.22} 0.5L${cx + 0.04} 0.34V0.66Z"/></g>`;
+  }
+
+  // Llave: se dibuja en horizontal con el pico hacia abajo y se orienta con una transformación.
+  // Las cuatro posiciones (girando 90° cada vez): pico abajo, izquierda, arriba y derecha.
+  function braceMarkup(r) {
+    const L = r.len, { w, h } = dims(r);
+    const q = Math.min(0.35, L / 4), m = L / 2;
+    const d = `M0 0.12Q0 0.5 ${r3(q)} 0.5H${r3(m - q)}Q${r3(m)} 0.5 ${r3(m)} 0.88Q${r3(m)} 0.5 ${r3(m + q)} 0.5H${r3(L - q)}Q${r3(L)} 0.5 ${r3(L)} 0.12`;
+    const orient = r.vertical ? (r.flip ? 'matrix(0 1 1 0 0 0)' : 'matrix(0 1 -1 0 1 0)') : (r.flip ? 'matrix(1 0 0 -1 0 1)' : '');
+    const color = r.color || BRACE_COLOR;
+    const cls = ['rod', 'brace'];
+    if (r.vertical) cls.push('vertical');
+    if (r.locked) cls.push('locked');
+    if (selection.has(r.id)) cls.push('selected');
+    let s = `<g class="${cls.join(' ')}" data-id="${r.id}" transform="${rodTransform(r)}">` +
+      `<rect class="text-hit" width="${w}" height="${h}"/>` +
+      `<path class="brace-line" d="${d}"${orient ? ` transform="${orient}"` : ''} stroke="${color}"/>`;
+    if (!r.locked) s += handleMarkup(r, w, h, color);
+    else s += `<use href="#i-lock" class="lock-badge" x="${w - 0.36}" y="0.05" width="0.3" height="0.3" style="color:${color}"/>`;
+    return s + '</g>';
+  }
+
   function rodMarkup(r) {
     if (isText(r)) return textMarkup(r);
+    if (isBrace(r)) return braceMarkup(r);
     if (isDrawing(r)) return drawingMarkup(r);
     const st = styleOf(r);
     const { w, h } = dims(r);
@@ -732,17 +771,7 @@
     if (r.numbered) s += numbersMarkup(r, ink, hasHandle && selected);
     else if (!labelledRods.has(r)) s += labelMarkup(r, w, h, ink, hasHandle);
 
-    if (hasHandle) {
-      if (r.vertical) {
-        const cy = h - 0.32;
-        s += `<g class="handle"><rect class="handle-hit" x="-0.1" y="${h - 0.65}" width="1.2" height="0.85"/>` +
-          `<path class="handle-arrows" fill="${ink}" d="M0.5 ${cy - 0.22}L0.34 ${cy - 0.04}H0.66ZM0.5 ${cy + 0.22}L0.34 ${cy + 0.04}H0.66Z"/></g>`;
-      } else {
-        const cx = w - 0.32;
-        s += `<g class="handle"><rect class="handle-hit" x="${w - 0.65}" y="-0.1" width="0.85" height="1.2"/>` +
-          `<path class="handle-arrows" fill="${ink}" d="M${cx - 0.22} 0.5L${cx - 0.04} 0.34V0.66ZM${cx + 0.22} 0.5L${cx + 0.04} 0.34V0.66Z"/></g>`;
-      }
-    }
+    if (hasHandle) s += handleMarkup(r, w, h, ink);
     if (r.locked) {
       s += `<use href="#i-lock" class="lock-badge" x="${w - 0.36}" y="0.05" width="0.3" height="0.3" style="color:${ink}"/>`;
     }
@@ -862,7 +891,7 @@
     // Una regleta con un texto escrito encima no muestra su propia etiqueta, para que no se monten
     labelledRods = new Set(rods.filter((r) => isText(r) && r.text.trim()).map(textHost).filter(Boolean));
     // Por capas: regletas, dibujos y, encima de todo, textos
-    rodsLayer.innerHTML = rods.filter(isRod).concat(rods.filter(isDrawing), rods.filter(isText)).map(rodMarkup).join('');
+    rodsLayer.innerHTML = rods.filter(turnable).concat(rods.filter(isDrawing), rods.filter(isText)).map(rodMarkup).join('');
     renderSel();
   }
 
@@ -1106,7 +1135,11 @@
   }
 
   // ---------------------------------------------------------------- Creación de regletas
-  function newRod(len, custom) {
+  function newRod(len, custom, brace) {
+    if (brace) {
+      // En vertical nace con el pico a la derecha, para ponerla al lado de una columna de regletas
+      return { id: nextId++, brace: true, len: BRACE_DEFAULT_LEN, x: 0, y: 0, vertical: prefs.vertical, flip: prefs.vertical, locked: false, angle: 0 };
+    }
     return {
       id: nextId++,
       len: custom ? CUSTOM_DEFAULT_LEN : len,
@@ -1128,11 +1161,11 @@
 
   // Clic en la paleta: las regletas del mismo valor se encadenan una tras otra;
   // un valor distinto empieza en el siguiente hueco libre (fila o columna).
-  function clickInsert(len, custom) {
-    const r = newRod(len, custom);
+  function clickInsert(len, custom, brace) {
+    const r = newRod(len, custom, brace);
     const last = chain && findRod(chain.id);
     if (last && last.x === chain.x && last.y === chain.y && last.vertical === r.vertical &&
-        last.custom === r.custom && last.len === r.len && !last.angle) {
+        last.custom === r.custom && !!last.brace === !!r.brace && last.len === r.len && !last.angle) {
       const ld = dims(last);
       if (r.vertical) { r.x = last.x; r.y = last.y + ld.h; } else { r.x = last.x + ld.w; r.y = last.y; }
     } else {
@@ -1161,6 +1194,7 @@
       r.x = r3(b.x0 + (H - v - d.h));
       r.y = r3(b.y0 + u);
       r.vertical = !r.vertical;
+      if (isBrace(r) && !r.vertical) r.flip = !r.flip; // pico: abajo → izquierda → arriba → derecha
     }
     bringToFront(list);
   }
@@ -1269,13 +1303,13 @@
     rodMenu.querySelector('[data-act="edit"]').hidden = !(list.length === 1 && isText(list[0]));
     rodMenu.querySelector('[data-act="fill"]').hidden = !fillable.length;
     rodMenu.querySelector('[data-act="number"]').hidden = !bars.length;
-    // Color: solo cuando todo lo seleccionado son regletas especiales
-    const specials = list.filter((r) => isRod(r) && r.custom);
+    // Color: solo cuando todo lo seleccionado son regletas especiales o llaves
+    const specials = list.filter(hasOwnColor);
     const colorable = specials.length === list.length;
     $('#rodColorItem').hidden = !colorable;
     rodMenu.querySelector('[data-act="uncolor"]').hidden = !colorable || !specials.some((r) => r.color);
     if (colorable) {
-      const fill = styleOf(specials[0]).fill;
+      const fill = isBrace(specials[0]) ? specials[0].color || BRACE_COLOR : styleOf(specials[0]).fill;
       $('#rodColorInput').value = fill.toLowerCase();
       $('#rodColorDot').style.background = fill;
     }
@@ -1283,7 +1317,7 @@
     const lockBtn = rodMenu.querySelector('[data-act="lock"]');
     lockBtn.title = t(allLocked ? 'unlock' : 'lock');
     lockBtn.setAttribute('aria-label', lockBtn.title);
-    rodMenu.querySelector('[data-act="rotate"]').disabled = anyLocked || bars.length !== list.length;
+    rodMenu.querySelector('[data-act="rotate"]').disabled = anyLocked || !list.every(turnable);
     rodMenu.querySelector('[data-act="delete"]').disabled = allLocked;
     const oneBlock = isSingleBlock(list);
     const groupBtn = rodMenu.querySelector('[data-act="group"]');
@@ -1353,7 +1387,7 @@
         break;
       }
       case 'rotate':
-        if (unlocked.length !== list.length || bars.length !== list.length) return;
+        if (unlocked.length !== list.length || !list.every(turnable)) return;
         if (list.length > 1 && isSingleBlock(list) && list.some((r) => r.angle)) {
           rotateBlockBy(list, 90);
           bringToFront(list);
@@ -1462,6 +1496,9 @@
         `<span class="pal-rod${plate ? ' plate' : ''}" style="--w:${width}px;background-color:${st.fill};border-color:${st.stroke};color:${st.text}">` +
         (custom ? '<svg class="ico"><use href="#i-resize"/></svg>' : '') + '</span></button>';
     }
+    // Llave para señalar grupos de regletas
+    html += `<button type="button" class="pal-item" data-len="${BRACE_DEFAULT_LEN}" data-brace="1" title="${t('brace')}" aria-label="${t('brace')}">` +
+      `<span class="pal-label"></span><span class="pal-brace"><svg viewBox="0 0 64 20"><path d="M2 3Q2 10 8 10H26Q32 10 32 18Q32 10 38 10H56Q62 10 62 3"/></svg></span></button>`;
     paletteList.innerHTML = html;
   }
 
@@ -1499,6 +1536,7 @@
       pid: e.pointerId,
       len: +item.dataset.len,
       custom: !!item.dataset.custom,
+      brace: !!item.dataset.brace,
       startX: e.clientX,
       startY: e.clientY,
       rod: null,
@@ -1507,14 +1545,14 @@
   paletteList.addEventListener('click', (e) => {
     // Activación con teclado (Enter / Espacio)
     const item = e.target.closest('.pal-item');
-    if (item && e.detail === 0) clickInsert(+item.dataset.len, !!item.dataset.custom);
+    if (item && e.detail === 0) clickInsert(+item.dataset.len, !!item.dataset.custom, !!item.dataset.brace);
   });
   palette.addEventListener('contextmenu', (e) => e.preventDefault());
 
   function paletteMove(e, g) {
     if (!g.rod) {
       if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < DRAG_THRESHOLD) return;
-      g.rod = newRod(g.len, g.custom);
+      g.rod = newRod(g.len, g.custom, g.brace);
       rods.push(g.rod);
       selectOnly(g.rod.id);
       closeRodMenu();
@@ -1528,7 +1566,7 @@
 
   function paletteUp(e, g) {
     if (!g.rod) {
-      clickInsert(g.len, g.custom);
+      clickInsert(g.len, g.custom, g.brace);
       return;
     }
     if (insideBoard(e.clientX, e.clientY) && !overPalette(e.clientX, e.clientY)) {
@@ -2661,7 +2699,7 @@
   // Selector de color de la regleta especial: se ve en directo y se guarda al cerrarlo
   $('#rodColorInput').addEventListener('input', (e) => {
     const value = e.target.value.toUpperCase();
-    selectedRods().filter((r) => isRod(r) && r.custom).forEach((r) => { r.color = value; });
+    selectedRods().filter(hasOwnColor).forEach((r) => { r.color = value; });
     $('#rodColorDot').style.background = value;
     renderRods();
   });
@@ -2676,7 +2714,7 @@
   const textEditor = $('#textEditor');
   const teInput = $('#teInput');
   let editing = null;   // texto que se está escribiendo
-  let centerX = null;  // en un texto libre nuevo, su centro: crece hacia los dos lados mientras se escribe
+  let anchor = null;   // texto nuevo que crece hacia los dos lados ({ x: centro }) o hacia la izquierda ({ x, right })
 
   // Teclado en pantalla de 8 columnas; también se puede escribir con el teclado del dispositivo
   const TE_KEYS = [
@@ -2715,9 +2753,24 @@
     if (drawMode) setDrawMode(false);
     // Con una regleta seleccionada, el texto nace dentro de ella, a la izquierda, con su misma altura,
     // y se une a ella para que la acompañe; si no, centrado en la vista y con letra grande
-    const host = selectedRods().filter(isRod).sort((a, b) => aabb(a).y0 - aabb(b).y0 || aabb(a).x0 - aabb(b).x0)[0];
-    const r = { id: nextId++, text: '', size: host ? 0.8 : prefs.titleSize, x: 0, y: 0, locked: false, angle: 0 };
-    if (host) {
+    // Con una llave seleccionada, nace junto a su pico, centrado, y unido a ella
+    const brace = selectedRods().find(isBrace);
+    const host = !brace && selectedRods().filter(isRod).sort((a, b) => aabb(a).y0 - aabb(b).y0 || aabb(a).x0 - aabb(b).x0)[0];
+    const r = { id: nextId++, text: '', size: host || brace ? 0.8 : prefs.titleSize, x: 0, y: 0, locked: false, angle: 0 };
+    let anc = null;
+    if (brace) {
+      const b = aabb(brace), h = dims(r).h;
+      if (!brace.vertical) {
+        anc = { x: (b.x0 + b.x1) / 2 };
+        r.y = r3(brace.flip ? b.y0 - h : b.y1);
+      } else {
+        r.y = r3((b.y0 + b.y1 - h) / 2);
+        if (brace.flip) r.x = r3(b.x1); else anc = { x: b.x0, right: true };
+      }
+      if (anc) r.x = r3(anc.x - dims(r).w * (anc.right ? 1 : 0.5));
+      r.group = brace.group || nextId++;
+      brace.group = r.group;
+    } else if (host) {
       const c = host.angle ? rodCorners(host)[0] : { x: host.x, y: host.y };
       r.x = r3(c.x); r.y = r3(c.y);
       r.group = host.group || nextId++;
@@ -2739,14 +2792,17 @@
     renderRods();
     ensureVisible([r]);
     openTextEditor(r);
-    if (!host) centerX = r.x + dims(r).w / 2;
+    anchor = anc || (host ? null : { x: r.x + dims(r).w / 2 });
+    recenter();
+    renderRods();
+    positionTextEditor();
   }
 
   function openTextEditor(r) {
     closeRodMenu();
     closePopovers();
     editing = r;
-    centerX = null;
+    anchor = null;
     teInput.value = r.text;
     textEditor.hidden = false;
     updateSizeButtons();
@@ -2760,7 +2816,7 @@
     if (!editing) return;
     const r = editing;
     editing = null;
-    centerX = null;
+    anchor = null;
     textEditor.hidden = true;
     teInput.blur();
     if (!r.text.trim()) deleteRods([r]);
@@ -2785,7 +2841,7 @@
   }
 
   function recenter() {
-    if (centerX != null) editing.x = r3(centerX - dims(editing).w / 2);
+    if (anchor) editing.x = r3(anchor.x - dims(editing).w * (anchor.right ? 1 : 0.5));
   }
 
   function textChanged() {

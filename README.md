@@ -58,6 +58,7 @@ Pensada para que los niños la usen con el dedo: todos los controles están en u
   - Pulsar varias veces la **misma** regleta las coloca **una a continuación de otra** (3 pulsaciones en la 4 → 4 + 4 + 4).
   - Pulsar regletas **distintas** las coloca en filas sucesivas: pulsando 1, 2, 3… 10 se forma la escalera.
 - **Devolver** una regleta del lienzo a la paleta la elimina (aparece el aviso «Suelta aquí para eliminar»).
+- **Llaves** (al final de la paleta) para señalar grupos de regletas: se estiran con las flechas de su extremo, como la regleta especial, y con *Girar* pasan por sus cuatro posiciones (pico abajo, a la izquierda, arriba y a la derecha). Con una llave seleccionada, el botón *Texto* pone la etiqueta junto a su pico, centrada y unida a la llave (por ejemplo, «7 caramelos» bajo un grupo de regletas). Desde su menú se puede cambiar su *Color*.
 
 ### Seleccionar, mover y organizar
 
