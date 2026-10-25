@@ -188,6 +188,9 @@ body.hc .pal-rod { border-color: #000 !important; border-width: 2.5px; }
   touch-action: none;
 }
 body.mode-pan #board, body.mode-pan .rod { cursor: grab; }
+body.mode-cut #board, body.mode-cut .rod { cursor: crosshair; }
+body.mode-cut .handle-hit, body.mode-cut .shape-hit { pointer-events: none !important; }
+#cutLine { stroke: #d93025; stroke-width: 2.5px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 body.drawing #board { cursor: crosshair; }
 #marquee { fill: rgba(29, 99, 216, .08); stroke: var(--sel); stroke-width: 1.5px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 body.drawing.tool-eraser #board { cursor: none; }

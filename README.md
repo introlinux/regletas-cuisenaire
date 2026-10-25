@@ -61,10 +61,11 @@ Pensada para que los niños la usen con el dedo: todos los controles están en u
 
 ### Seleccionar, mover y organizar
 
-- **Dos modos** en la barra inferior (por defecto, *Seleccionar*):
+- **Tres modos** en la barra inferior (por defecto, *Seleccionar*; el tercero, *Cortar*, se explica más abajo):
   - **Seleccionar**: tocar una regleta la selecciona; arrastrar sobre el fondo dibuja un **recuadro de selección** para elegir varias; arrastrar una regleta seleccionada mueve todo el grupo.
   - **Mover lienzo**: arrastrar desplaza la vista (aunque se empiece encima de una regleta), así nadie mueve piezas sin querer.
 - **Pellizcar con dos dedos** hace zoom y desplaza la vista en cualquier modo.
+- **Tijeras** (modo *Cortar* de la barra inferior): al tocar una regleta se corta por la separación de cuadritos más cercana; por ejemplo, la naranja tocada cerca del 7 se convierte en una regleta de 7 y otra de 3, cada una con su color. Con ratón, una línea roja discontinua indica dónde se cortará. Cada trozo conserva el giro, el bloque, la numeración (con sus mismos números), el relleno y la etiqueta propia; la placa de 100 y las regletas bloqueadas no se cortan. Arrastrar sobre el fondo mueve el lienzo.
 - **Ajuste magnético**: con la cuadrícula visible, las regletas encajan en ella; además se pegan borde con borde con las regletas cercanas. Se puede desactivar en *Ajustes*.
 - La regleta seleccionada se resalta con un **borde azul grueso** con halo blanco, visible incluso entre regletas pegadas.
 - **Unir / Separar**: varias regletas se pueden unir en un **bloque** que se selecciona, mueve, duplica, gira y elimina como una sola pieza (se marca con un recuadro discontinuo).
@@ -182,6 +183,7 @@ El botón **Texto** (o la tecla `T`) añade un texto en el lienzo y abre un **te
 | Eliminar una regleta | Menú → papelera, o devolverla a la paleta |
 | Girar libremente | Activar *Giro libre* y arrastrar el asa |
 | Escribir un texto o una operación | Botón *Texto* (o tecla `T`); doble clic sobre un texto para cambiarlo |
+| Cortar una regleta | Modo *Cortar* (tijeras) y tocarla junto a la separación por donde se quiere cortar |
 | Estirar la regleta especial | Seleccionarla y arrastrar las flechas de su extremo |
 
 ---

@@ -1,7 +1,7 @@
 /* Service Worker: guarda la aplicación en caché para usarla sin conexión.
    Sirve primero desde la caché y la actualiza en segundo plano.
    Al publicar cambios, sube la versión de CACHE para forzar la renovación. */
-const CACHE = 'regletas-v24';
+const CACHE = 'regletas-v25';
 const ASSETS = [
   './',
   './index.html',

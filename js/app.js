@@ -73,7 +73,7 @@
   let polyDraft = null; // poligonal que se está dibujando: { rod, pts: vértices ya fijados }
   let nextId = 1;
   let selection = new Set();
-  let mode = 'select'; // 'select': seleccionar y mover regletas · 'pan': mover el lienzo
+  let mode = 'select'; // 'select': seleccionar y mover regletas · 'pan': mover el lienzo · 'cut': tijeras
   let drawMode = false;
   let chain = null;    // inserción rápida por clic: última regleta añadida
   let gesture = null;
@@ -1536,6 +1536,59 @@
     }
   }
 
+  // ---------------------------------------------------------------- Tijeras
+  // Dónde cortaría un toque en `p`: la separación de cuadritos más cercana, o null si no se puede
+  function cutAt(r, p) {
+    if (!isRod(r) || r.plate || r.locked) return null;
+    const [c0, c1, , c3] = rodCorners(r);
+    const { w, h } = dims(r);
+    const uh = { x: (c1.x - c0.x) / w, y: (c1.y - c0.y) / w };
+    const vh = { x: (c3.x - c0.x) / h, y: (c3.y - c0.y) / h };
+    const [lh, wh] = r.vertical ? [vh, uh] : [uh, vh]; // a lo largo y a lo ancho de la regleta
+    const t = (p.x - c0.x) * lh.x + (p.y - c0.y) * lh.y;
+    const k = clamp(Math.round(t), 1, Math.ceil(r.len - 1e-6) - 1);
+    if (k < 1 || k >= r.len - 1e-6) return null;
+    return { k, c0, lh, wh };
+  }
+
+  // Corta la regleta en dos: k cuadritos y el resto. Cada trozo conserva lo demás (bloque, relleno,
+  // etiqueta propia, color…) y, si estaba numerada, sigue con sus mismos números.
+  function cutRod(r, cut) {
+    const { k, c0, lh, wh } = cut;
+    const piece = (o, len) => {
+      const q = Object.assign({}, r, { id: nextId++, len: r3(len) });
+      const cx = c0.x + lh.x * (o + len / 2) + wh.x / 2, cy = c0.y + lh.y * (o + len / 2) + wh.y / 2;
+      const d = dims(q);
+      q.x = r3(cx - d.w / 2); q.y = r3(cy - d.h / 2);
+      return q;
+    };
+    const a = piece(0, k), b = piece(k, r.len - k);
+    if (r.numbered) {
+      const s0 = r.numStart || 0;
+      // Contando desde abajo, los primeros números están en el trozo de abajo (b)
+      const up = r.vertical && prefs.numberFromBottom;
+      const [first, second] = up ? [b, a] : [a, b];
+      if (s0) first.numStart = s0; else delete first.numStart;
+      second.numStart = s0 + Math.floor(first.len + 1e-6);
+    }
+    rods.splice(rods.indexOf(r), 1, a, b);
+    pruneSelection();
+    renderRods();
+    commit();
+  }
+
+  // Con ratón, una línea discontinua muestra dónde se cortará
+  const cutLine = $('#cutLine');
+  function showCutLine(r, p) {
+    const cut = r && cutAt(r, p);
+    if (!cut) { cutLine.setAttribute('display', 'none'); return; }
+    const { k, c0, lh, wh } = cut;
+    const x1 = c0.x + lh.x * k, y1 = c0.y + lh.y * k;
+    cutLine.setAttribute('x1', r3(x1 - wh.x * 0.3)); cutLine.setAttribute('y1', r3(y1 - wh.y * 0.3));
+    cutLine.setAttribute('x2', r3(x1 + wh.x * 1.3)); cutLine.setAttribute('y2', r3(y1 + wh.y * 1.3));
+    cutLine.setAttribute('display', '');
+  }
+
   // ---------------------------------------------------------------- Gestos en el lienzo
   board.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button === 2) return; // lo gestiona 'contextmenu'
@@ -1628,6 +1681,15 @@
     // Volver a tocar una regleta ya seleccionada (sin menú abierto) abre su menú
     const tapOpensMenu = !!r && selection.has(r.id) && rodMenu.hidden;
     closeRodMenu();
+
+    // Tijeras: tocar una regleta la corta; arrastrar sobre el fondo mueve el lienzo
+    if (mode === 'cut' && e.button !== 1) {
+      const cut = r && cutAt(r, w);
+      if (cut) { cutRod(r, cut); showCutLine(null); return; }
+      if (r && isRod(r) && (r.plate || r.locked)) toast(t(r.plate ? 'cantCutPlate' : 'cantCutLocked'));
+      startPan(e);
+      return;
+    }
 
     // Modo "mover lienzo" o botón central: arrastrar desplaza; tocar una regleta la selecciona
     if (mode === 'pan' || e.button === 1) {
@@ -1755,6 +1817,10 @@
     if (!g) {
       if (drawMode && prefs.tool === 'eraser' && board.contains(e.target)) {
         updateEraserCursor(screenToWorld(e.clientX, e.clientY));
+      }
+      if (mode === 'cut' && !drawMode) {
+        const el = board.contains(e.target) && e.target.closest('.rod');
+        showCutLine(el && findRod(+el.dataset.id), screenToWorld(e.clientX, e.clientY));
       }
       // Con ratón, la poligonal muestra el siguiente lado hasta el puntero
       if (drawMode && polyDraft && board.contains(e.target)) {
@@ -2120,6 +2186,7 @@
   // ---------------------------------------------------------------- Modos de interacción
   function setMode(m) {
     mode = m;
+    showCutLine(null);
     if (drawMode) setDrawMode(false);
     updateToolbar();
     renderSel();
@@ -2269,7 +2336,9 @@
 
     $('#btnModeSelect').setAttribute('aria-pressed', String(mode === 'select' && !drawMode));
     $('#btnModePan').setAttribute('aria-pressed', String(mode === 'pan' && !drawMode));
+    $('#btnModeCut').setAttribute('aria-pressed', String(mode === 'cut' && !drawMode));
     document.body.classList.toggle('mode-pan', mode === 'pan');
+    document.body.classList.toggle('mode-cut', mode === 'cut');
 
     $('#orientIcon').setAttribute('href', prefs.vertical ? '#i-orient-v' : '#i-orient-h');
     $('#orientText').textContent = t(prefs.vertical ? 'vertical' : 'horizontal');
@@ -2319,6 +2388,7 @@
   $('#btnSettings').addEventListener('click', (e) => togglePopover(e.currentTarget, settingsMenu));
   $('#btnModeSelect').addEventListener('click', () => setMode('select'));
   $('#btnModePan').addEventListener('click', () => setMode('pan'));
+  $('#btnModeCut').addEventListener('click', () => setMode('cut'));
 
   labelsMenu.addEventListener('click', (e) => {
     const item = e.target.closest('[data-mode]');
