@@ -316,6 +316,18 @@
       .map(([u, v]) => ({ x: cx + u * c - v * s, y: cy + u * s + v * c }));
   }
 
+  // Esquinas para seleccionar con el recuadro: los trazos se ensanchan con su grosor, así
+  // un punto suelto o una línea recta horizontal/vertical (recuadro de ancho o alto 0) también cuentan
+  function pickCorners(r) {
+    if (!isDrawing(r)) return rodCorners(r);
+    const pad = Math.max(r.width || 0, 0.05) / 2;
+    const w = r.w + 2 * pad, h = r.h + 2 * pad;
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    const a = (r.angle || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+      .map(([u, v]) => ({ x: cx + u * c - v * s, y: cy + u * s + v * c }));
+  }
+
   // ¿Se tocan dos polígonos convexos? (teorema del eje separador)
   function polygonsIntersect(A, B) {
     for (const poly of [A, B]) {
@@ -839,9 +851,12 @@
   // El borde de selección va en una capa por encima de todas las regletas para que las vecinas no lo tapen
   function selMarkup(r) {
     const { w, h } = dims(r);
+    // En los trazos el borde rodea también su grosor: así se ve aunque sea un punto suelto
+    const p = isDrawing(r) ? Math.max(r.width || 0, 0.05) / 2 + 0.04 : 0;
+    const box = `x="${r3(-p)}" y="${r3(-p)}" width="${r3(w + 2 * p)}" height="${r3(h + 2 * p)}"`;
     let s = `<g class="sel" data-id="${r.id}" transform="${rodTransform(r)}">` +
-      `<rect class="sel-halo" width="${w}" height="${h}" rx="0.03"/>` +
-      `<rect class="sel-line" width="${w}" height="${h}" rx="0.03"/>`;
+      `<rect class="sel-halo" ${box} rx="0.03"/>` +
+      `<rect class="sel-line" ${box} rx="0.03"/>`;
     // Asa de giro: solo con una regleta seleccionada y desbloqueada
     if (selection.size === 1 && canFreeRotate([r])) {
       const k = 1 / view.zoom;
@@ -1924,7 +1939,7 @@
     const next = new Set(g.additive ? g.base : []);
     const box = [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
     for (const r of rods) {
-      if (polygonsIntersect(rodCorners(r), box)) next.add(r.id);
+      if (polygonsIntersect(pickCorners(r), box)) next.add(r.id);
     }
     withGroups(next);
     if (next.size !== selection.size || [...next].some((id) => !selection.has(id))) {
