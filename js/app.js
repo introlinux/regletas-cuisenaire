@@ -1339,6 +1339,34 @@
     groupBtn.hidden = list.length < 2;
     $('#groupIcon').setAttribute('href', oneBlock ? '#i-unlink' : '#i-link');
     $('#groupText').textContent = t(oneBlock ? 'ungroup' : 'group');
+    rodMenu.querySelector('[data-act="stack"]').hidden = !canStack(list);
+  }
+
+  // «Apilar hasta 1000»: una sola placa de 100, suelta y sin bloquear
+  function canStack(list) {
+    return list.length === 1 && isRod(list[0]) && list[0].plate && !list[0].locked;
+  }
+
+  // Pone 9 copias de la placa detrás de ella, escalonadas hacia abajo a la izquierda,
+  // y las une con el original en un bloque de 1000 que se puede separar con «Separar».
+  // El bloque crece hacia la derecha: la placa del fondo ocupa el sitio de la original.
+  const STACK_STEP = 0.2;
+  function stackTo1000(plate) {
+    const gid = nextId++;
+    plate.group = gid;
+    plate.x = r3(plate.x + 9 * STACK_STEP);
+    const copies = [];
+    for (let i = 9; i >= 1; i--) {
+      const c = Object.assign({}, plate, {
+        id: nextId++, group: gid,
+        x: r3(plate.x - i * STACK_STEP), y: r3(plate.y + i * STACK_STEP),
+      });
+      delete c.numbered; delete c.numStart; delete c.numBlock;
+      copies.push(c);
+    }
+    const at = rods.indexOf(plate);
+    rods.splice(at, 0, ...copies); // detrás del original, la más lejana primero
+    selection = new Set([...copies.map((c) => c.id), plate.id]);
   }
 
   // ¿La selección es exactamente un bloque de regletas unidas?
@@ -1422,6 +1450,10 @@
         if (list.length < 2) return;
         if (isSingleBlock(list)) list.forEach((r) => { delete r.group; });
         else { const gid = nextId++; list.forEach((r) => { r.group = gid; }); }
+        break;
+      case 'stack':
+        if (!canStack(list)) return;
+        stackTo1000(list[0]);
         break;
       case 'lock': {
         const allLocked = list.every((r) => r.locked);
